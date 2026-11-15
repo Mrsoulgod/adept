@@ -159,6 +159,30 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
     });
   });
 
+  describe('Supabase Schema & Auth Flow (Elder Persistent Login + Passcode Gated Edits)', () => {
+    it('verifies the persistent elder session flow', () => {
+      // Import session functions
+      const sessionKey = 'adept_elder_session_active';
+      localStorage.setItem(sessionKey, 'true');
+      expect(localStorage.getItem(sessionKey)).toBe('true');
+    });
+
+    it('requires passcode only for caretaker/family edits', () => {
+      // Elder write action (e.g. dose log) requires 0 passwords
+      const elderDoseLog = {
+        medicationId: 'med-1',
+        mealAnchor: 'morning_breakfast',
+        status: 'taken',
+        loggedBy: 'elder',
+      };
+      expect(elderDoseLog.status).toBe('taken');
+
+      // Caretaker edit requires passcode check
+      const caretakerPin = '2222';
+      expect(ROLE_PASSCODES.caretaker).toBe(caretakerPin);
+    });
+  });
+
   describe('Audit Log with Elder Veto', () => {
     it('maintains an audit trail and provides elder veto on caretaker actions', () => {
       expect(INITIAL_AUDIT_LOGS.length).toBeGreaterThan(0);

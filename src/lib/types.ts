@@ -73,18 +73,59 @@ export interface Profile {
   conditions: string[];
 }
 
+export interface Member {
+  id: string;
+  profileId: string;
+  role: Role;
+  name: string;
+  email?: string;
+  phone?: string;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export type MedicationSource = 'doctor_rx_ocr' | 'caretaker_manual' | 'ai_proposal';
+
 export interface Medication {
   id: string;
   name: string;
   friendlyName: string; // Elder friendly name e.g. "Small white blood pressure pill"
   dosage: string;       // e.g. "5mg"
+  dose?: string;        // Schema alias
   instructions: string; // e.g. "Take 1 tablet with food"
   mealAnchor: MealAnchor;
+  windowStart?: string; // e.g. "07:00"
+  windowEnd?: string;   // e.g. "10:00"
+  stockCount?: number;  // e.g. 30
+  source?: MedicationSource;
   shapeDescription: string; // e.g. "Round white pill with line"
   color: string;        // e.g. "#3b82f6"
   purpose: string;      // e.g. "Keeps your blood pressure steady"
   prescribedBy: string; // e.g. "Dr. Evelyn Vance"
   isActive: boolean;
+  createdAt: string;
+}
+
+export interface Appointment {
+  id: string;
+  profileId: string;
+  doctorName: string;
+  doctorPhone?: string;
+  location?: string;
+  scheduledAt: string;
+  notes?: string;
+  status: 'scheduled' | 'completed' | 'rescheduled' | 'cancelled';
+  preVisitBriefJson?: any;
+  createdAt: string;
+}
+
+export interface SymptomCheckin {
+  id: string;
+  profileId: string;
+  wellnessScore: 'great' | 'steady' | 'tired' | 'discomfort';
+  mealAnchor: MealAnchor;
+  notes?: string;
+  loggedAt: string;
   createdAt: string;
 }
 
