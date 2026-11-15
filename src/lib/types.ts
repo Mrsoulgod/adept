@@ -64,6 +64,8 @@ export interface Profile {
   name: string;
   age: number;
   role: Role;
+  relationship?: 'Dad' | 'Mom' | 'Grandmother' | 'Grandfather' | 'Elder' | string;
+  healthStatus?: string;
   photoUrl?: string;
   language?: 'en' | 'hi';
   wakeTime?: string;
@@ -82,6 +84,36 @@ export interface Profile {
   familyEmail: string;
   avatarUrl?: string;
   conditions: string[];
+  allergies?: string[];
+  isDevicePaired?: boolean;
+  pairedDeviceName?: string;
+  lastConnectedAt?: string;
+  pairingCode?: string;
+}
+
+export type ElderProfile = Profile;
+
+export interface ChatMessage {
+  id: string;
+  channelId: string; // 'group' or member ID or elder ID
+  channelName: string; // e.g. "Care Circle Group", "Sarah Davies", "James Davies"
+  senderRole: Role;
+  senderName: string;
+  text: string;
+  timestamp: string;
+  isQuickResponse?: boolean;
+  isVoiceTranscription?: boolean;
+}
+
+export interface EmergencyAlert {
+  id: string;
+  elderId: string;
+  elderName: string;
+  reason: string;
+  timestamp: string;
+  status: 'active' | 'resolved';
+  resolvedAt?: string;
+  resolvedBy?: string;
 }
 
 export interface Member {
@@ -137,6 +169,7 @@ export const EDIT_SOURCE_LABELS: Record<EditSource, string> = {
 
 export interface Medication {
   id: string;
+  elderId?: string;     // Which elder this medication belongs to (defaults to active elder)
   name: string;
   friendlyName: string; // Elder friendly name e.g. "Small white blood pressure pill"
   dosage: string;       // e.g. "5mg"

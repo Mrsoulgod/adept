@@ -11,11 +11,15 @@ import type {
   PermissionLevel,
   Member,
   ElderDeviceRecord,
+  ChatMessage,
+  EmergencyAlert,
 } from '../lib/types';
 import { MEAL_ANCHORS, EDIT_SOURCE_LABELS } from '../lib/types';
 import {
   INITIAL_PROFILE,
+  INITIAL_ELDERS,
   INITIAL_MEDICATIONS,
+  INITIAL_CHAT_MESSAGES,
   getInitialDoseLogs,
   INITIAL_AI_PROPOSALS,
   INITIAL_AUDIT_LOGS,
@@ -162,6 +166,24 @@ interface AdeptContextType {
   // Settings & Utilities
   updateSettings: (newSettings: Partial<AdeptContextType['settings']>) => void;
   resetDemoData: () => void;
+
+  // Multiple Elders Management
+  elders: Profile[];
+  activeElderId: string;
+  activeElder: Profile;
+  switchActiveElder: (id: string) => void;
+  addElder: (elder: Partial<Profile>) => void;
+  updateElder: (id: string, updates: Partial<Profile>) => void;
+  updateElderHealthStatus: (id: string, healthStatus: string) => void;
+
+  // Direct & Group Family Chat
+  chatMessages: ChatMessage[];
+  sendChatMessage: (channelId: string, text: string, isVoiceTranscription?: boolean) => void;
+
+  // Emergency SOS System
+  emergencyAlert: EmergencyAlert | null;
+  triggerEmergencySOS: (elderId?: string, reason?: string) => void;
+  resolveEmergencyAlert: (alertId: string) => void;
 }
 
 const AdeptContext = createContext<AdeptContextType | undefined>(undefined);
@@ -197,6 +219,56 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
 
+  // Multiple Elders Management State
+  const [elders, setElders] = useState<Profile[]>(() => {
+    try {
+      const stored = localStorage.getItem('adept_elders_list_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return INITIAL_ELDERS;
+  });
+
+  const [activeElderId, setActiveElderId] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('adept_active_elder_id');
+      if (stored) return stored;
+    } catch {}
+    return 'elder-dad';
+  });
+
+  const activeElder = elders.find((e) => e.id === activeElderId) || elders[0] || INITIAL_ELDERS[0];
+  const profile = activeElder; // Alias for backward compatibility
+
+  const setProfile = (updater: Profile | ((prev: Profile) => Profile)) => {
+    setElders((prev) => {
+      const current = prev.find((e) => e.id === activeElderId) || prev[0];
+      const updatedItem = typeof updater === 'function' ? updater(current) : updater;
+      const updated = prev.map((e) => (e.id === current.id ? updatedItem : e));
+      try {
+        localStorage.setItem('adept_elders_list_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  // Direct & Group Family Chat State
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const stored = localStorage.getItem('adept_chat_messages_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return INITIAL_CHAT_MESSAGES;
+  });
+
+  // Emergency SOS Alert State
+  const [emergencyAlert, setEmergencyAlert] = useState<EmergencyAlert | null>(() => {
+    try {
+      const stored = localStorage.getItem('adept_active_emergency_alert');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return null;
+  });
+
   // Load from local storage or defaults
   const [initialData] = useState(() => {
     return loadStoredState({
@@ -208,13 +280,65 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   });
 
-  const [profile, setProfile] = useState<Profile>(initialData.profile);
   const [medications, setMedications] = useState<Medication[]>(initialData.medications);
   const [doseLogs, setDoseLogs] = useState<DoseLog[]>(initialData.doseLogs);
   const [aiProposals, setAiProposals] = useState<AIProposal[]>(initialData.aiProposals);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(initialData.auditLogs);
   const [settings, setSettings] = useState(initialData.settings || {});
   const [lastEmailDispatch, setLastEmailDispatch] = useState<EmailDispatchResult | null>(null);
+
+  // Cross-tab real-time sync via BroadcastChannel & Storage Event
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('adept_pairing_sync');
+
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (data?.type === 'DEVICE_PAIRED') {
+        setIsElderPaired(true);
+        setElderDevices(getActiveElderDevices());
+        if (data.elderId) {
+          setElders((prev) =>
+            prev.map((e) =>
+              e.id === data.elderId
+                ? { ...e, isDevicePaired: true, pairedDeviceName: data.deviceName }
+                : e
+            )
+          );
+        }
+      } else if (data?.type === 'PAIRING_CODE_UPDATED') {
+        setActivePairingCodeMeta(getActivePairingCodeMeta());
+      } else if (data?.type === 'CHAT_MESSAGE') {
+        setChatMessages((prev) => [data.message, ...prev.filter((m) => m.id !== data.message.id)]);
+      } else if (data?.type === 'EMERGENCY_SOS') {
+        setEmergencyAlert(data.alert);
+      } else if (data?.type === 'EMERGENCY_RESOLVED') {
+        setEmergencyAlert(null);
+      }
+    };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'adept_elder_session_active') {
+        setIsElderPaired(e.newValue === 'true');
+      }
+      if (e.key === 'adept_elders_list_v1' && e.newValue) {
+        try { setElders(JSON.parse(e.newValue)); } catch {}
+      }
+      if (e.key === 'adept_chat_messages_v1' && e.newValue) {
+        try { setChatMessages(JSON.parse(e.newValue)); } catch {}
+      }
+      if (e.key === 'adept_active_emergency_alert') {
+        try { setEmergencyAlert(e.newValue ? JSON.parse(e.newValue) : null); } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      channel.close();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   // Family Tasks Coordination State
   const [familyTasks, setFamilyTasks] = useState<FamilyTask[]>([
@@ -335,10 +459,11 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Prompt 4: Elder Device Pairing using 6-Digit Numeric Code
   const pairElderDevice = async (code: string): Promise<boolean> => {
-    const res = await pairElderDeviceWithCode(code, "Arthur's Tablet");
+    const res = await pairElderDeviceWithCode(code, `${activeElder.name}'s Tablet`, activeElderId);
     if (res.success) {
       setIsElderPaired(true);
       setRole('elder');
+      updateElder(activeElderId, { isDevicePaired: true, pairedDeviceName: `${activeElder.name}'s Tablet` });
       setElderDevices(getActiveElderDevices());
       return true;
     }
@@ -348,6 +473,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const unpairElderDevice = (): void => {
     unpairElderDeviceStorage();
     setIsElderPaired(false);
+    updateElder(activeElderId, { isDevicePaired: false });
     setRole(authUser?.role || 'family');
   };
 
@@ -358,7 +484,203 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const revokeElderDevice = (deviceId: string) => {
     revokeElderDeviceRecord(deviceId);
+    updateElder(activeElderId, { isDevicePaired: false });
     setElderDevices(getActiveElderDevices());
+  };
+
+  // Multiple Elders Management Methods
+  const switchActiveElder = (id: string) => {
+    setActiveElderId(id);
+    try {
+      localStorage.setItem('adept_active_elder_id', id);
+    } catch {}
+  };
+
+  const addElder = (data: Partial<Profile>) => {
+    const newId = `elder-${Date.now()}`;
+    const newElder: Profile = {
+      id: newId,
+      name: data.name || 'New Elder',
+      relationship: data.relationship || 'Elder',
+      age: data.age || 75,
+      role: 'elder',
+      healthStatus: data.healthStatus || 'Resting comfortably',
+      doctorName: data.doctorName || activeElder.doctorName || 'Dr. Evelyn Vance',
+      doctorPhone: data.doctorPhone || activeElder.doctorPhone || '(555) 234-8901',
+      emergencyContactName: data.emergencyContactName || activeElder.emergencyContactName || 'Sarah Davies',
+      emergencyContactPhone: data.emergencyContactPhone || activeElder.emergencyContactPhone || '(555) 345-6789',
+      caretakerName: activeElder.caretakerName || 'Sarah Davies',
+      caretakerPhone: activeElder.caretakerPhone || '(555) 345-6789',
+      caretakerEmail: activeElder.caretakerEmail || 'sarah.care@example.com',
+      familyName: activeElder.familyName || 'James Davies',
+      familyEmail: activeElder.familyEmail || 'james.family@example.com',
+      conditions: data.conditions || [],
+      allergies: data.allergies || [],
+      isDevicePaired: false,
+      language: data.language || 'en',
+      wakeTime: data.wakeTime || '07:00',
+      breakfastTime: data.breakfastTime || '08:30',
+      lunchTime: data.lunchTime || '13:00',
+      dinnerTime: data.dinnerTime || '19:30',
+      sleepTime: data.sleepTime || '22:00',
+    };
+
+    setElders((prev) => {
+      const updated = [...prev, newElder];
+      try {
+        localStorage.setItem('adept_elders_list_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    setActiveElderId(newId);
+    try {
+      localStorage.setItem('adept_active_elder_id', newId);
+    } catch {}
+
+    recordAuditEntry({
+      id: `audit-${Date.now()}`,
+      actorRole: role,
+      actorName: authUser?.name || 'Care Team',
+      action: `Added Elder Profile: ${newElder.name}`,
+      plainEnglishDescription: `Care circle expanded to support ${newElder.name} (${newElder.relationship}, age ${newElder.age}).`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    });
+  };
+
+  const updateElder = (id: string, updates: Partial<Profile>) => {
+    setElders((prev) => {
+      const updated = prev.map((e) => (e.id === id ? { ...e, ...updates } : e));
+      try {
+        localStorage.setItem('adept_elders_list_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const updateElderHealthStatus = (id: string, healthStatus: string) => {
+    updateElder(id, { healthStatus });
+    const targetElder = elders.find((e) => e.id === id);
+    recordAuditEntry({
+      id: `audit-health-${Date.now()}`,
+      actorRole: role,
+      actorName: authUser?.name || 'Care Team',
+      action: `Health status updated for ${targetElder?.name || 'Elder'}`,
+      plainEnglishDescription: `${targetElder?.name || 'Elder'}'s reported health status updated to: "${healthStatus}".`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    });
+  };
+
+  // Direct & Group Family Chat Methods
+  const sendChatMessage = (channelId: string, text: string, isVoiceTranscription: boolean = false) => {
+    if (!text.trim()) return;
+    const senderRole = role;
+    const senderName =
+      role === 'elder'
+        ? activeElder.name
+        : role === 'caretaker'
+        ? (authUser?.name || 'Sarah Davies (Caretaker)')
+        : (authUser?.name || 'James Davies (Family)');
+
+    const channelName =
+      channelId === 'group'
+        ? 'Care Circle Family Chat'
+        : channelId === 'sarah-direct'
+        ? 'Sarah Davies'
+        : channelId === 'james-direct'
+        ? 'James Davies'
+        : activeElder.name;
+
+    const newMsg: ChatMessage = {
+      id: `chat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      channelId,
+      channelName,
+      senderRole,
+      senderName,
+      text: text.trim(),
+      timestamp: 'Just now',
+      isQuickResponse: false,
+      isVoiceTranscription,
+    };
+
+    setChatMessages((prev) => {
+      const updated = [newMsg, ...prev];
+      try {
+        localStorage.setItem('adept_chat_messages_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('adept_pairing_sync');
+        channel.postMessage({ type: 'CHAT_MESSAGE', message: newMsg });
+      }
+    } catch {}
+  };
+
+  // Emergency SOS Methods
+  const triggerEmergencySOS = (elderId?: string, reason: string = 'Emergency SOS Button Pressed') => {
+    const targetElder = elders.find((e) => e.id === (elderId || activeElderId)) || activeElder;
+    const alert: EmergencyAlert = {
+      id: `sos-${Date.now()}`,
+      elderId: targetElder.id,
+      elderName: targetElder.name,
+      reason,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'active',
+    };
+
+    setEmergencyAlert(alert);
+    try {
+      localStorage.setItem('adept_active_emergency_alert', JSON.stringify(alert));
+    } catch {}
+
+    recordAuditEntry({
+      id: `audit-sos-${Date.now()}`,
+      actorRole: 'elder',
+      actorName: targetElder.name,
+      action: 'EMERGENCY SOS ALERT TRIGGERED',
+      plainEnglishDescription: `🚨 URGENT: ${targetElder.name} activated the Emergency SOS alert. Family and Caretaker notified immediately.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    });
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('adept_pairing_sync');
+        channel.postMessage({ type: 'EMERGENCY_SOS', alert });
+      }
+    } catch {}
+  };
+
+  const resolveEmergencyAlert = (alertId: string) => {
+    setEmergencyAlert(null);
+    try {
+      localStorage.removeItem('adept_active_emergency_alert');
+    } catch {}
+
+    recordAuditEntry({
+      id: `audit-sos-resolved-${Date.now()}`,
+      actorRole: role,
+      actorName: authUser?.name || 'Family Coordinator',
+      action: 'Emergency Alert Marked Resolved',
+      plainEnglishDescription: `Emergency alert ${alertId} resolved. Elder is safe and checked on.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    });
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('adept_pairing_sync');
+        channel.postMessage({ type: 'EMERGENCY_RESOLVED', alertId });
+      }
+    } catch {}
   };
 
   // Prompt 2: Save Elder Profile & Care Circle Setup Wizard
@@ -1055,12 +1377,15 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetDemoData = () => {
-    setProfile(INITIAL_PROFILE);
+    setElders(INITIAL_ELDERS);
+    setActiveElderId('elder-dad');
     setMedications(INITIAL_MEDICATIONS);
     setDoseLogs(getInitialDoseLogs());
     setAiProposals(INITIAL_AI_PROPOSALS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
     setMembers(getStoredMembersList());
+    localStorage.removeItem('adept_elders_list_v1');
+    localStorage.removeItem('adept_active_elder_id');
     localStorage.removeItem('adept_platform_data_v1');
     localStorage.removeItem('adept_pin_lockout_caretaker');
     localStorage.removeItem('adept_onboarding_completed');
@@ -1133,6 +1458,18 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordAuditEntry,
         updateSettings,
         resetDemoData,
+        elders,
+        activeElderId,
+        activeElder,
+        switchActiveElder,
+        addElder,
+        updateElder,
+        updateElderHealthStatus,
+        chatMessages,
+        sendChatMessage,
+        emergencyAlert,
+        triggerEmergencySOS,
+        resolveEmergencyAlert,
       }}
     >
       {children}

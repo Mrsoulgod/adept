@@ -6,7 +6,7 @@ interface LogoHeaderProps {
 }
 
 export const LogoHeader: React.FC<LogoHeaderProps> = ({ onTriggerDemo }) => {
-  const { role, profile, authUser } = useAdept();
+  const { role, profile, authUser, isElderPaired } = useAdept();
   const [isPressing, setIsPressing] = useState(false);
   const pressTimer = useRef<any>(null);
 
@@ -27,10 +27,14 @@ export const LogoHeader: React.FC<LogoHeaderProps> = ({ onTriggerDemo }) => {
   };
 
   const getRoleLabel = () => {
+    // Only show role badge when a user session or elder device is actually active!
+    if (!authUser && !isElderPaired) return null;
     if (role === 'elder') return `${profile.name || 'Arthur Davies'} • Elder`;
     if (role === 'caretaker') return `${authUser?.name || profile.caretakerName || 'Sarah Davies'} • Caretaker`;
     return `${authUser?.name || 'James Davies'} • Family Owner`;
   };
+
+  const roleLabel = getRoleLabel();
 
   return (
     <header className="w-full bg-[#fcfbfa] border-b border-slate-200/80 px-4 h-14 flex items-center justify-between sticky top-0 z-40 select-none">
@@ -59,12 +63,14 @@ export const LogoHeader: React.FC<LogoHeaderProps> = ({ onTriggerDemo }) => {
         </div>
       </div>
 
-      {/* Role Pill indicator (No Switch Role, No /design, No Demo Settings in standard UI) */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs bg-emerald-100 text-[#064e3b] font-bold px-2.5 py-1 rounded-full border border-emerald-200/60 max-w-[190px] truncate">
-          {getRoleLabel()}
-        </span>
-      </div>
+      {/* Role Pill indicator (Only when authenticated) */}
+      {roleLabel && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs bg-emerald-100 text-[#064e3b] font-bold px-2.5 py-1 rounded-full border border-emerald-200/60 max-w-[190px] truncate">
+            {roleLabel}
+          </span>
+        </div>
+      )}
     </header>
   );
 };

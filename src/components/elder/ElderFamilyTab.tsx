@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAdept } from '../../context/AdeptContext';
-import { Phone, Heart, MessageCircle } from 'lucide-react';
+import { Phone, Heart, MessageCircle, Users, User } from 'lucide-react';
+import { CareCircleChatModal } from '../chat/CareCircleChatModal';
 
 export const ElderFamilyTab: React.FC = () => {
   const { profile, familyCheerMessages } = useAdept();
+  const [chatOpen, setChatOpen] = useState(false);
+  const [targetChannel, setTargetChannel] = useState<'group' | 'sarah-direct' | 'james-direct'>('group');
+
+  const openChatWith = (channel: 'group' | 'sarah-direct' | 'james-direct') => {
+    setTargetChannel(channel);
+    setChatOpen(true);
+  };
 
   return (
     <div className="px-5 py-6 space-y-6 font-sans">
@@ -14,54 +22,111 @@ export const ElderFamilyTab: React.FC = () => {
           <span>Your Family</span>
         </div>
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-          Loved Ones & Messages
+          Loved Ones & Care Circle
         </h1>
         <p className="text-sm text-slate-600">
-          Sarah, James, and the family are always with you.
+          Sarah, James, and your family are right here with you.
         </p>
       </div>
 
-      {/* Quick One-Tap Call Buttons (56px max touch target) */}
+      {/* Main Big Choice Action: Open Family Chat */}
+      <button
+        onClick={() => openChatWith('group')}
+        className="w-full min-h-[64px] bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-2xl p-4 flex items-center justify-between shadow-md cursor-pointer active:scale-98 transition-all"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
+            <Users className="w-6 h-6 text-emerald-200" />
+          </div>
+          <div className="text-left">
+            <div className="text-base font-black">Family Group Chat</div>
+            <div className="text-xs text-emerald-200 font-medium">
+              Talk or speak with Sarah & James together
+            </div>
+          </div>
+        </div>
+        <span className="text-xs bg-emerald-400 text-emerald-950 px-3 py-1.5 rounded-full font-black">
+          Open Chat
+        </span>
+      </button>
+
+      {/* 1-on-1 Family Direct Connect */}
       <div className="space-y-3">
         <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Quick Phone Call
+          Direct Call & Message
         </h2>
 
-        <a
-          href={`tel:${profile.caretakerPhone || '555-345-6789'}`}
-          className="w-full h-14 bg-white hover:bg-emerald-50 border-2 border-emerald-600/40 rounded-2xl px-4 flex items-center justify-between text-slate-900 font-bold shadow-xs active:scale-98 transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-[#064e3b] flex items-center justify-center">
-              <Phone className="w-5 h-5" />
-            </div>
-            <div className="text-left">
-              <div className="text-sm font-black">Call Sarah (Daughter)</div>
-              <div className="text-xs text-slate-500">{profile.caretakerPhone || '(555) 345-6789'}</div>
+        {/* Sarah Davies */}
+        <div className="bg-white border-2 border-emerald-600/30 rounded-2xl p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#064e3b] flex items-center justify-center font-bold">
+                <User className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  Sarah Davies (Daughter)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Care Coordinator • {profile.caretakerPhone || '(555) 345-6789'}
+                </p>
+              </div>
             </div>
           </div>
-          <span className="text-xs bg-emerald-100 text-[#064e3b] px-3 py-1 rounded-full font-black">
-            Call
-          </span>
-        </a>
 
-        <a
-          href="tel:555-789-0123"
-          className="w-full h-14 bg-white hover:bg-emerald-50 border-2 border-slate-300 rounded-2xl px-4 flex items-center justify-between text-slate-900 font-bold shadow-xs active:scale-98 transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-              <Phone className="w-5 h-5" />
-            </div>
-            <div className="text-left">
-              <div className="text-sm font-black">Call James (Son)</div>
-              <div className="text-xs text-slate-500">(555) 789-0123 • Chicago</div>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <a
+              href={`tel:${profile.caretakerPhone || '555-345-6789'}`}
+              className="h-12 bg-white hover:bg-emerald-50 border border-emerald-600/50 rounded-xl flex items-center justify-center gap-1.5 text-slate-900 font-bold text-xs active:scale-98 transition-all"
+            >
+              <Phone className="w-4 h-4 text-[#064e3b]" />
+              <span>Call Sarah</span>
+            </a>
+            <button
+              onClick={() => openChatWith('sarah-direct')}
+              className="h-12 bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs cursor-pointer active:scale-98 transition-all"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Message</span>
+            </button>
+          </div>
+        </div>
+
+        {/* James Davies */}
+        <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                <User className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  James Davies (Son)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Family Coordinator • Chicago
+                </p>
+              </div>
             </div>
           </div>
-          <span className="text-xs bg-slate-100 text-slate-700 px-3 py-1 rounded-full font-black">
-            Call
-          </span>
-        </a>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <a
+              href="tel:555-789-0123"
+              className="h-12 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl flex items-center justify-center gap-1.5 text-slate-900 font-bold text-xs active:scale-98 transition-all"
+            >
+              <Phone className="w-4 h-4 text-slate-600" />
+              <span>Call James</span>
+            </a>
+            <button
+              onClick={() => openChatWith('james-direct')}
+              className="h-12 bg-slate-800 hover:bg-slate-900 text-white rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs cursor-pointer active:scale-98 transition-all"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Message</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Cheer Cards Feed */}
@@ -88,6 +153,13 @@ export const ElderFamilyTab: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Care Circle Chat Modal */}
+      <CareCircleChatModal
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        defaultChannelId={targetChannel}
+      />
     </div>
   );
 };

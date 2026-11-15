@@ -8,3 +8,4 @@ export const CaretakerLogTab: React.FC = () => {
     </div>
   );
 };
+

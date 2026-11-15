@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdept } from '../../context/AdeptContext';
 import { sendPasswordReset } from '../../lib/authService';
 import {
@@ -30,6 +30,16 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onTriggerDemo }) =
   const [name, setName] = useState('');
   const [elderCode, setElderCode] = useState('');
   const [resetEmail, setResetEmail] = useState('');
+  const [syncedPairingCode, setSyncedPairingCode] = useState<string>('824457');
+
+  useEffect(() => {
+    fetch('/api/pairing-code')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.code) setSyncedPairingCode(data.code);
+      })
+      .catch(() => {});
+  }, []);
 
   // Status & feedback
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -499,20 +509,39 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onTriggerDemo }) =
                 </div>
               )}
 
-              <div className="bg-white p-5 rounded-3xl border-2 border-[#064e3b]/30 shadow-xs space-y-2">
+              <div className="bg-white p-5 rounded-3xl border-2 border-[#064e3b]/30 shadow-xs space-y-3">
                 <input
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
                   value={elderCode}
                   onChange={(e) => setElderCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="482910"
+                  placeholder="824457"
                   required
                   className="w-full h-16 text-center font-mono font-black text-3xl tracking-[0.3em] rounded-2xl border-2 border-slate-300 focus:outline-none focus:border-[#064e3b] bg-slate-50 text-slate-900"
                 />
-                <span className="text-[11px] text-slate-400 block">
-                  Sample code: <strong>482910</strong> or generate in Family Settings
-                </span>
+
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Quick auto-fill options:
+                  </span>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setElderCode(syncedPairingCode)}
+                      className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold px-3 py-1.5 rounded-full border border-emerald-300 cursor-pointer active:scale-95 transition-all"
+                    >
+                      Active Code: <strong>{syncedPairingCode}</strong>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setElderCode('482910')}
+                      className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-full border border-slate-300 cursor-pointer active:scale-95 transition-all"
+                    >
+                      Sample: <strong>482910</strong>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <button

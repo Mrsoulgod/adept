@@ -17,10 +17,14 @@ import {
   PlusCircle,
   MinusCircle,
   RefreshCw,
+  MessageCircle,
 } from 'lucide-react';
+import { EmergencySosModal } from '../emergency/EmergencySosModal';
+import { CareCircleChatModal } from '../chat/CareCircleChatModal';
 
 export const ElderScreen: React.FC = () => {
   const {
+    activeElderId,
     profile,
     medications,
     doseLogs,
@@ -40,6 +44,8 @@ export const ElderScreen: React.FC = () => {
   const [activeView, setActiveView] = useState<'main' | 'veto'>('main');
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const [selectedFeeling, setSelectedFeeling] = useState<string | null>(null);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Web Speech API state
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -61,8 +67,13 @@ export const ElderScreen: React.FC = () => {
     currentAnchor = 'before_bedtime';
   }
 
+  // Filter medications for active elder (Dad vs Mom vs Custom Elder)
+  const elderMeds = medications.filter((med) =>
+    med.elderId ? med.elderId === activeElderId : activeElderId === 'elder-dad'
+  );
+
   // Next pending medication
-  const pendingMedInWindow = medications.find((med) => {
+  const pendingMedInWindow = elderMeds.find((med) => {
     if (!med.isActive) return false;
     if (med.mealAnchor !== currentAnchor) return false;
     const hasLog = todayLogs.some((l) => l.medicationId === med.id && l.status === 'taken');
@@ -71,7 +82,7 @@ export const ElderScreen: React.FC = () => {
 
   const nextPendingMed =
     pendingMedInWindow ||
-    medications.find((med) => {
+    elderMeds.find((med) => {
       if (!med.isActive) return false;
       const hasLog = todayLogs.some((l) => l.medicationId === med.id && l.status === 'taken');
       return !hasLog;
@@ -644,6 +655,55 @@ export const ElderScreen: React.FC = () => {
           </p>
         </header>
 
+        {/* Convenient Emergency SOS & Family Chat Action Bar */}
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          {/* Emergency SOS Button (Max touch target 56px+, AAA contrast) */}
+          <button
+            onClick={() => setEmergencyOpen(true)}
+            className="min-h-[64px] bg-red-600 hover:bg-red-700 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-md cursor-pointer active:scale-98 transition-all"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-white" />
+              </div>
+              <div className="text-left">
+                <div className="text-base font-black uppercase tracking-wide leading-tight">
+                  {language === 'hi' ? 'आपातकालीन' : 'Emergency'}
+                </div>
+                <div className="text-xs text-red-100 font-bold">
+                  {language === 'hi' ? 'तुरंत मदद' : 'SOS & Help'}
+                </div>
+              </div>
+            </div>
+            <span className="text-xs bg-white text-red-700 px-2 py-1 rounded-full font-black">
+              SOS
+            </span>
+          </button>
+
+          {/* Family Chat Button */}
+          <button
+            onClick={() => setChatOpen(true)}
+            className="min-h-[64px] bg-white hover:bg-emerald-50 border-2 border-[#064e3b]/30 text-[#064e3b] rounded-2xl p-3.5 flex items-center justify-between shadow-xs cursor-pointer active:scale-98 transition-all"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-6 h-6 text-[#064e3b]" />
+              </div>
+              <div className="text-left">
+                <div className="text-base font-black tracking-wide leading-tight text-slate-900">
+                  {language === 'hi' ? 'परिवार चैट' : 'Family Chat'}
+                </div>
+                <div className="text-xs text-emerald-800 font-bold">
+                  {language === 'hi' ? 'बातचीत करें' : 'Group & Direct'}
+                </div>
+              </div>
+            </div>
+            <span className="text-xs bg-emerald-100 text-[#064e3b] px-2 py-1 rounded-full font-black">
+              Chat
+            </span>
+          </button>
+        </div>
+
         {/* Feedback Banner if any action occurred */}
         {feedbackNotice && (
           <div className="bg-[#EAF2EC] border-2 border-[#C6DBD0] text-[#244937] p-4 rounded-2xl text-xl font-bold flex items-center gap-3 shadow-xs">
@@ -810,46 +870,97 @@ export const ElderScreen: React.FC = () => {
 
           <div className="space-y-3">
             {/* Morning (Breakfast) */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
-              <div className="flex items-center gap-3">
-                <Sunrise className="w-6 h-6 text-[#244937]" />
-                <div>
-                  <div className="font-bold text-lg text-[#1A1D1A]">{t.breakfast}</div>
-                  <div className="text-sm text-[#70756F]">Amlodipine, Metformin</div>
+            {(() => {
+              const meds = elderMeds.filter((m) => m.mealAnchor === 'morning_breakfast');
+              const medNames = meds.map((m) => m.friendlyName).join(', ') || 'No morning doses';
+              const isDone =
+                meds.length > 0 &&
+                meds.every((m) =>
+                  todayLogs.some((l) => l.medicationId === m.id && l.status === 'taken')
+                );
+              return (
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
+                  <div className="flex items-center gap-3">
+                    <Sunrise className="w-6 h-6 text-[#244937]" />
+                    <div>
+                      <div className="font-bold text-lg text-[#1A1D1A]">{t.breakfast}</div>
+                      <div className="text-sm text-[#70756F]">{medNames}</div>
+                    </div>
+                  </div>
+                  <span
+                    className={`font-bold text-base px-3 py-1 rounded-full ${
+                      isDone
+                        ? 'text-[#244937] bg-[#EAF2EC]'
+                        : 'text-slate-600 bg-slate-100'
+                    }`}
+                  >
+                    {isDone ? t.completed : t.inWindow}
+                  </span>
                 </div>
-              </div>
-              <span className="font-bold text-base text-[#244937] bg-[#EAF2EC] px-3 py-1 rounded-full">
-                {t.completed}
-              </span>
-            </div>
+              );
+            })()}
 
             {/* Midday (Lunch) */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
-              <div className="flex items-center gap-3">
-                <Sun className="w-6 h-6 text-[#92631E]" />
-                <div>
-                  <div className="font-bold text-lg text-[#1A1D1A]">{t.lunch}</div>
-                  <div className="text-sm text-[#70756F]">Glucosamine Complex</div>
+            {(() => {
+              const meds = elderMeds.filter((m) => m.mealAnchor === 'after_lunch');
+              const medNames = meds.map((m) => m.friendlyName).join(', ') || 'No midday doses';
+              const isDone =
+                meds.length > 0 &&
+                meds.every((m) =>
+                  todayLogs.some((l) => l.medicationId === m.id && l.status === 'taken')
+                );
+              return (
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
+                  <div className="flex items-center gap-3">
+                    <Sun className="w-6 h-6 text-[#92631E]" />
+                    <div>
+                      <div className="font-bold text-lg text-[#1A1D1A]">{t.lunch}</div>
+                      <div className="text-sm text-[#70756F]">{medNames}</div>
+                    </div>
+                  </div>
+                  <span
+                    className={`font-bold text-base px-3 py-1 rounded-full ${
+                      isDone
+                        ? 'text-[#244937] bg-[#EAF2EC]'
+                        : 'text-[#92631E] bg-[#FBF5EA]'
+                    }`}
+                  >
+                    {isDone ? t.completed : t.inWindow}
+                  </span>
                 </div>
-              </div>
-              <span className="font-bold text-base text-[#92631E] bg-[#FBF5EA] px-3 py-1 rounded-full">
-                {t.inWindow}
-              </span>
-            </div>
+              );
+            })()}
 
             {/* Evening (Dinner) */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
-              <div className="flex items-center gap-3">
-                <Sunset className="w-6 h-6 text-[#70756F]" />
-                <div>
-                  <div className="font-bold text-lg text-[#1A1D1A]">{t.dinner}</div>
-                  <div className="text-sm text-[#70756F]">Atorvastatin</div>
+            {(() => {
+              const meds = elderMeds.filter((m) => m.mealAnchor === 'evening_dinner');
+              const medNames = meds.map((m) => m.friendlyName).join(', ') || 'No evening doses';
+              const isDone =
+                meds.length > 0 &&
+                meds.every((m) =>
+                  todayLogs.some((l) => l.medicationId === m.id && l.status === 'taken')
+                );
+              return (
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
+                  <div className="flex items-center gap-3">
+                    <Sunset className="w-6 h-6 text-[#70756F]" />
+                    <div>
+                      <div className="font-bold text-lg text-[#1A1D1A]">{t.dinner}</div>
+                      <div className="text-sm text-[#70756F]">{medNames}</div>
+                    </div>
+                  </div>
+                  <span
+                    className={`font-semibold text-base px-3 py-1 rounded-full ${
+                      isDone
+                        ? 'text-[#244937] bg-[#EAF2EC] font-bold'
+                        : 'text-[#70756F]'
+                    }`}
+                  >
+                    {isDone ? t.completed : t.upcoming}
+                  </span>
                 </div>
-              </div>
-              <span className="font-semibold text-base text-[#70756F]">
-                {t.upcoming}
-              </span>
-            </div>
+              );
+            })()}
           </div>
         </section>
 
@@ -945,6 +1056,19 @@ export const ElderScreen: React.FC = () => {
           {t.reviewVeto}
         </button>
       </footer>
+
+      {/* Emergency & SOS Modal */}
+      <EmergencySosModal
+        isOpen={emergencyOpen}
+        onClose={() => setEmergencyOpen(false)}
+      />
+
+      {/* Care Circle Family Chat Modal */}
+      <CareCircleChatModal
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        defaultChannelId="group"
+      />
     </div>
   );
 };

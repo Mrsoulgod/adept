@@ -1,23 +1,68 @@
-import type { Profile, Medication, DoseLog, AIProposal, AuditLogItem } from '../lib/types';
+import type { Profile, Medication, DoseLog, AIProposal, AuditLogItem, ChatMessage } from '../lib/types';
 
-export const INITIAL_PROFILE: Profile = {
-  id: 'arthur-davies-78',
-  name: 'Arthur Davies',
-  age: 78,
-  role: 'elder',
-  doctorName: 'Dr. Evelyn Vance',
-  doctorPhone: '(555) 234-8901',
-  caretakerName: 'Sarah Davies (Daughter)',
-  caretakerPhone: '(555) 345-6789',
-  caretakerEmail: 'sarah.care@example.com',
-  familyName: 'James Davies (Son)',
-  familyEmail: 'james.family@example.com',
-  conditions: ['Mild Hypertension', 'Type 2 Blood Sugar', 'Knee Joint Stiffness'],
-};
+export const INITIAL_ELDERS: Profile[] = [
+  {
+    id: 'elder-dad',
+    name: 'Arthur Davies',
+    relationship: 'Dad',
+    age: 78,
+    role: 'elder',
+    healthStatus: 'Resting Steady',
+    doctorName: 'Dr. Evelyn Vance',
+    doctorPhone: '(555) 234-8901',
+    emergencyContactName: 'Sarah Davies (Daughter)',
+    emergencyContactPhone: '(555) 345-6789',
+    caretakerName: 'Sarah Davies (Daughter)',
+    caretakerPhone: '(555) 345-6789',
+    caretakerEmail: 'sarah.care@example.com',
+    familyName: 'James Davies (Son)',
+    familyEmail: 'james.family@example.com',
+    conditions: ['Mild Hypertension', 'Type 2 Blood Sugar', 'Knee Joint Stiffness'],
+    allergies: ['Penicillin'],
+    isDevicePaired: false,
+    pairedDeviceName: "Arthur's Tablet",
+    language: 'en',
+    wakeTime: '07:00',
+    breakfastTime: '08:30',
+    lunchTime: '13:00',
+    dinnerTime: '19:30',
+    sleepTime: '22:00',
+  },
+  {
+    id: 'elder-mom',
+    name: 'Martha Davies',
+    relationship: 'Mom',
+    age: 76,
+    role: 'elder',
+    healthStatus: 'Active & Comfortable',
+    doctorName: 'Dr. Evelyn Vance',
+    doctorPhone: '(555) 234-8901',
+    emergencyContactName: 'Sarah Davies (Daughter)',
+    emergencyContactPhone: '(555) 345-6789',
+    caretakerName: 'Sarah Davies (Daughter)',
+    caretakerPhone: '(555) 345-6789',
+    caretakerEmail: 'sarah.care@example.com',
+    familyName: 'James Davies (Son)',
+    familyEmail: 'james.family@example.com',
+    conditions: ['Mild Osteoporosis', 'Seasonal Allergies'],
+    allergies: ['Sulfa drugs'],
+    isDevicePaired: false,
+    pairedDeviceName: "Martha's Tablet",
+    language: 'en',
+    wakeTime: '06:30',
+    breakfastTime: '08:00',
+    lunchTime: '12:30',
+    dinnerTime: '19:00',
+    sleepTime: '21:30',
+  },
+];
+
+export const INITIAL_PROFILE: Profile = INITIAL_ELDERS[0];
 
 export const INITIAL_MEDICATIONS: Medication[] = [
   {
     id: 'med-1',
+    elderId: 'elder-dad',
     name: 'Amlodipine',
     friendlyName: 'Morning Blood Pressure Tablet',
     dosage: '5 mg',
@@ -35,6 +80,7 @@ export const INITIAL_MEDICATIONS: Medication[] = [
   },
   {
     id: 'med-2',
+    elderId: 'elder-dad',
     name: 'Metformin',
     friendlyName: 'Morning Sugar Balance Tablet',
     dosage: '500 mg',
@@ -52,6 +98,7 @@ export const INITIAL_MEDICATIONS: Medication[] = [
   },
   {
     id: 'med-3',
+    elderId: 'elder-dad',
     name: 'Glucosamine Complex',
     friendlyName: 'Midday Joint Comfort Capsule',
     dosage: '1000 mg',
@@ -69,6 +116,7 @@ export const INITIAL_MEDICATIONS: Medication[] = [
   },
   {
     id: 'med-4',
+    elderId: 'elder-dad',
     name: 'Atorvastatin',
     friendlyName: 'Evening Heart Shield Tablet',
     dosage: '20 mg',
@@ -84,6 +132,81 @@ export const INITIAL_MEDICATIONS: Medication[] = [
     isActive: true,
     createdAt: '2026-10-01T18:00:00Z',
   },
+  {
+    id: 'med-mom-1',
+    elderId: 'elder-mom',
+    name: 'Calcium + Vitamin D3',
+    friendlyName: 'Morning Bone Strength Tablet',
+    dosage: '600 mg / 400 IU',
+    instructions: '1 chewable tablet with breakfast',
+    mealAnchor: 'morning_breakfast',
+    stockCount: 30,
+    dailyDoseUnits: 1,
+    source: 'prescription_photo',
+    shapeDescription: 'White round chewable tablet',
+    color: '#06b6d4',
+    purpose: 'Maintains bone density and calcium absorption',
+    prescribedBy: 'Dr. Evelyn Vance',
+    isActive: true,
+    createdAt: '2026-10-01T08:00:00Z',
+  },
+  {
+    id: 'med-mom-2',
+    elderId: 'elder-mom',
+    name: 'Cetirizine',
+    friendlyName: 'Evening Allergy Relief Tablet',
+    dosage: '10 mg',
+    instructions: '1 small white tablet with dinner',
+    mealAnchor: 'evening_dinner',
+    stockCount: 14,
+    dailyDoseUnits: 1,
+    source: 'prescription_photo',
+    shapeDescription: 'Small white oval tablet',
+    color: '#ec4899',
+    purpose: 'Prevents seasonal sneezing and allergy discomfort',
+    prescribedBy: 'Dr. Evelyn Vance',
+    isActive: true,
+    createdAt: '2026-10-01T18:00:00Z',
+  },
+];
+
+export const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
+  {
+    id: 'chat-1',
+    channelId: 'group',
+    channelName: 'Care Circle Family Chat',
+    senderRole: 'family',
+    senderName: 'James Davies (Son)',
+    text: 'Good morning Dad and Sarah! Let me know if you need any fresh groceries brought over this weekend.',
+    timestamp: 'Today, 8:10 AM',
+  },
+  {
+    id: 'chat-2',
+    channelId: 'group',
+    channelName: 'Care Circle Family Chat',
+    senderRole: 'caretaker',
+    senderName: 'Sarah Davies (Daughter)',
+    text: 'Morning James! Dad had a restful sleep last night. I will prepare his oatmeal at 8:30.',
+    timestamp: 'Today, 8:15 AM',
+  },
+  {
+    id: 'chat-3',
+    channelId: 'sarah-direct',
+    channelName: 'Sarah Davies',
+    senderRole: 'caretaker',
+    senderName: 'Sarah Davies',
+    text: 'Dad, I picked up your favorite blueberry tea from the shop yesterday ❤️',
+    timestamp: 'Yesterday, 4:30 PM',
+  },
+  {
+    id: 'chat-4',
+    channelId: 'james-direct',
+    channelName: 'James Davies',
+    senderRole: 'family',
+    senderName: 'James Davies',
+    text: 'Hi Dad, looking forward to watching Sunday football together on the weekend!',
+    timestamp: 'Yesterday, 6:00 PM',
+  },
 ];
 
 // Generate past 7 days dose logs + today
@@ -93,7 +216,7 @@ const getPastDateStr = (daysAgo: number) => {
   return d.toISOString().split('T')[0];
 };
 
-export const getInitialDoseLogs = (): DoseLog[] => {
+export const getInitialDoseLogs = (includeToday = false): DoseLog[] => {
   const logs: DoseLog[] = [];
   const todayStr = getPastDateStr(0);
 
@@ -165,31 +288,58 @@ export const getInitialDoseLogs = (): DoseLog[] => {
       loggedBy: 'elder',
       notes: 'Taken with dinner.',
     });
+
+    // Mom's medications (Martha Davies)
+    logs.push({
+      id: `log-mom-am-${i}`,
+      medicationId: 'med-mom-1',
+      medicationName: 'Calcium + Vitamin D3',
+      mealAnchor: 'morning_breakfast',
+      date: dStr,
+      status: 'taken',
+      loggedAt: `${dStr}T08:15:00Z`,
+      loggedBy: 'elder',
+      notes: 'Taken with breakfast fruit and oatmeal.',
+    });
+    logs.push({
+      id: `log-mom-pm-${i}`,
+      medicationId: 'med-mom-2',
+      medicationName: 'Cetirizine',
+      mealAnchor: 'evening_dinner',
+      date: dStr,
+      status: 'taken',
+      loggedAt: `${dStr}T19:00:00Z`,
+      loggedBy: 'elder',
+      notes: 'Taken with dinner.',
+    });
   }
 
-  // Today's logs: Morning doses already comfortably taken!
-  logs.push({
-    id: `log-am-today-1`,
-    medicationId: 'med-1',
-    medicationName: 'Amlodipine (Morning BP)',
-    mealAnchor: 'morning_breakfast',
-    date: todayStr,
-    status: 'taken',
-    loggedAt: `${todayStr}T08:15:00Z`,
-    loggedBy: 'elder',
-    notes: 'Taken with toast and Earl Grey tea.',
-  });
-  logs.push({
-    id: `log-am-today-2`,
-    medicationId: 'med-2',
-    medicationName: 'Metformin (Sugar Balance)',
-    mealAnchor: 'morning_breakfast',
-    date: todayStr,
-    status: 'taken',
-    loggedAt: `${todayStr}T08:16:00Z`,
-    loggedBy: 'elder',
-    notes: 'Taken with breakfast.',
-  });
+  // Only show today's confirmed doses if the elder's device is actually paired or in test simulation
+  const isPaired = typeof localStorage !== 'undefined' && localStorage.getItem('adept_elder_session_active') === 'true';
+  if (includeToday || isPaired) {
+    logs.push({
+      id: `log-am-today-1`,
+      medicationId: 'med-1',
+      medicationName: 'Amlodipine (Morning BP)',
+      mealAnchor: 'morning_breakfast',
+      date: todayStr,
+      status: 'taken',
+      loggedAt: `${todayStr}T08:15:00Z`,
+      loggedBy: 'elder',
+      notes: 'Taken with toast and Earl Grey tea.',
+    });
+    logs.push({
+      id: `log-am-today-2`,
+      medicationId: 'med-2',
+      medicationName: 'Metformin (Sugar Balance)',
+      mealAnchor: 'morning_breakfast',
+      date: todayStr,
+      status: 'taken',
+      loggedAt: `${todayStr}T08:16:00Z`,
+      loggedBy: 'elder',
+      notes: 'Taken with breakfast.',
+    });
+  }
 
   return logs;
 };

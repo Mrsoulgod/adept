@@ -10,7 +10,7 @@ interface ScheduleEditorProps {
 }
 
 export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ onClose, editingMed }) => {
-  const { addOrUpdateMedication } = useAdept();
+  const { addOrUpdateMedication, activeElderId } = useAdept();
 
   const [name, setName] = useState(editingMed?.name || '');
   const [friendlyName, setFriendlyName] = useState(editingMed?.friendlyName || '');
@@ -46,6 +46,7 @@ export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ onClose, editing
 
     const med: Medication = {
       id: editingMed ? editingMed.id : `med-${Date.now()}`,
+      elderId: editingMed?.elderId || activeElderId,
       name,
       friendlyName,
       dosage: dosage || 'Standard dose',

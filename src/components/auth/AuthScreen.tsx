@@ -316,3 +316,4 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onTriggerDemo }) => {
     </div>
   );
 };
+
