@@ -102,3 +102,27 @@ npm run dev
 
 Visit `http://localhost:5173` to test the live application.
 Use PIN `1111` for Arthur (Elder), `2222` for Sarah (Caretaker), or `3333` for James (Family).
+
+---
+
+## 🌐 Deploy Anywhere (Universal Multi-Environment Support)
+
+Adept is configured with relative base asset paths (`base: './'`), SPA 404 fallback routing, and PWA service worker resilience so it runs out-of-the-box on any hosting provider without modification:
+
+### 1. Vercel
+- Import repository `https://github.com/Mrsoulgod/adept`.
+- Framework preset: **Vite** (auto-detected).
+- Build command: `npm run build`
+- Output directory: `dist`
+- Deep link routing is handled automatically by the included `vercel.json`.
+
+### 2. GitHub Pages
+- Go to repository **Settings** > **Pages**.
+- Under **Build and deployment** > **Source**, choose **GitHub Actions**.
+- The included `.github/workflows/deploy.yml` workflow automatically builds and deploys on every push to `main`.
+- SPA navigation on subpaths (e.g. `https://mrsoulgod.github.io/adept/`) is supported by `public/404.html`.
+
+### 3. Netlify / Cloudflare Pages / Render
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Hash router (`#/elder/today`, `#/caretaker/today`, `#/family/home`) ensures instant zero-configuration routing across all static hosts.

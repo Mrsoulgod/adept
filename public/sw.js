@@ -1,10 +1,10 @@
 // Adept Service Worker - Zero cost offline resilience
 const CACHE_NAME = 'adept-cache-v1';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/favicon.svg',
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './favicon.svg',
 ];
 
 self.addEventListener('install', (event) => {

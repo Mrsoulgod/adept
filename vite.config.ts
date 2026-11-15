@@ -63,6 +63,7 @@ const pairingSyncPlugin = (): Plugin => ({
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: './',
   plugins: [react(), tailwindcss(), pairingSyncPlugin()],
   test: {
     environment: 'jsdom',
