@@ -93,7 +93,7 @@ export const CaretakerDashboard: React.FC = () => {
         <div className="bg-amber-50/80 border-2 border-amber-300 rounded-3xl p-6 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-amber-900 font-bold text-sm uppercase tracking-wider">
             <Sparkles className="w-4 h-4 text-amber-700" />
-            Active AI Proposal Awaiting Arthur's Decision
+            Active AI Proposal Awaiting {profile.name.split(' ')[0]}'s Decision
           </div>
           {pendingProposals.map((prop) => (
             <div
@@ -108,7 +108,7 @@ export const CaretakerDashboard: React.FC = () => {
                 </p>
               </div>
               <span className="bg-amber-100 text-amber-900 font-bold px-3 py-1.5 rounded-full text-xs shrink-0">
-                Awaiting Arthur's Yes/No
+                Awaiting {profile.name.split(' ')[0]}'s Yes/No
               </span>
             </div>
           ))}

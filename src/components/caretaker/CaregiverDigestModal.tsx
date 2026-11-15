@@ -52,7 +52,7 @@ export const CaregiverDigestModal: React.FC<CaregiverDigestModalProps> = ({ onCl
 
         await sendEmailViaResend({
           to: recipient,
-          subject: `Time for your morning pill, after breakfast • Arthur Davies`,
+          subject: `Time for your morning pill, after breakfast • ${profile.name}`,
           html,
           apiKey: settings.resendApiKey,
         });
@@ -63,13 +63,13 @@ export const CaregiverDigestModal: React.FC<CaregiverDigestModalProps> = ({ onCl
           mealAnchorLabel: 'Morning with breakfast',
           windowLabel: '7:00 AM – 10:00 AM',
           delayedByStr: 'approx. 45 minutes ago',
-          comfortNote: 'Arthur enjoyed a quiet rest in the garden this morning.',
+          comfortNote: `${profile.name.split(' ')[0]} enjoyed a quiet rest in the garden this morning.`,
           magicLink: linkTaken,
         });
 
         await sendEmailViaResend({
           to: recipient,
-          subject: `Gentle Routine Check: Morning with breakfast • Arthur Davies`,
+          subject: `Gentle Routine Check: Morning with breakfast • ${profile.name}`,
           html,
           apiKey: settings.resendApiKey,
         });
@@ -210,7 +210,7 @@ export const CaregiverDigestModal: React.FC<CaregiverDigestModalProps> = ({ onCl
                     Test Signed One-Tap Action Links
                   </p>
                   <p className="text-xs text-slate-600">
-                    Click any action below to simulate opening the link directly from Arthur's email:
+                    Click any action below to simulate opening the link directly from {profile.name.split(' ')[0]}'s email:
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">

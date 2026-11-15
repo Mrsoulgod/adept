@@ -154,7 +154,7 @@ export const PostVisitVoiceModal: React.FC<PostVisitVoiceModalProps> = ({ onClos
             Record Post-Visit Appointment Note
           </h2>
           <p className="text-slate-600 text-xs sm:text-sm mt-1">
-            Speak or transcribe what {profile.doctorName} recommended. Gemini extracts proposed schedule changes for <strong>Arthur</strong> to confirm.
+            Speak or transcribe what {profile.doctorName} recommended. Gemini extracts proposed schedule changes for <strong>{profile.name.split(' ')[0]}</strong> to confirm.
           </p>
         </div>
 
@@ -163,10 +163,10 @@ export const PostVisitVoiceModal: React.FC<PostVisitVoiceModalProps> = ({ onClos
           <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-6 sm:p-8 text-center my-4 space-y-4">
             <CheckCircle2 className="w-16 h-16 text-[#047857] mx-auto" />
             <h3 className="text-2xl font-black text-[#064e3b]">
-              Proposed Schedule Sent to Arthur!
+              Proposed Schedule Sent to {profile.name.split(' ')[0]}!
             </h3>
             <p className="text-slate-700 text-base leading-relaxed max-w-lg mx-auto">
-              Per Adept's Design Law: <span className="font-semibold text-slate-900">"Every AI output is a PROPOSAL the elder confirms."</span> Arthur will see these proposed adjustments on his screen and decide whether to apply them.
+              Per Adept's Design Law: <span className="font-semibold text-slate-900">"Every AI output is a PROPOSAL the elder confirms."</span> {profile.name.split(' ')[0]} will see these proposed adjustments on their screen and decide whether to apply them.
             </p>
             <div className="pt-3">
               <button
@@ -360,7 +360,7 @@ export const PostVisitVoiceModal: React.FC<PostVisitVoiceModalProps> = ({ onClos
                 {/* Design Law Check */}
                 <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs text-emerald-950 flex items-start gap-2">
                   <span className="font-bold shrink-0">Design Law Check:</span>
-                  <span>These changes are NOT applied yet. Arthur must review and confirm on his screen.</span>
+                  <span>These changes are NOT applied yet. {profile.name.split(' ')[0]} must review and confirm on their screen.</span>
                 </div>
 
                 {/* Action Button */}
@@ -369,7 +369,7 @@ export const PostVisitVoiceModal: React.FC<PostVisitVoiceModalProps> = ({ onClos
                   onClick={handleSendProposalToArthur}
                   className="w-full bg-[#064e3b] hover:bg-[#043d2e] text-white py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-98"
                 >
-                  <span>Send Proposed Schedule Changes to Arthur for Confirmation</span>
+                  <span>Send Proposed Schedule Changes to {profile.name.split(' ')[0]} for Confirmation</span>
                   <ArrowRight className="w-5 h-5" />
                 </button>
               </div>

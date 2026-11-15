@@ -7,6 +7,7 @@ import {
   MicOff,
   X,
   Volume2,
+  VolumeX,
   AlertOctagon,
   PhoneCall,
   Layers,
@@ -46,6 +47,8 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
     getAdherence30d,
     getUsualDoseTime,
     triggerEmergencySOS,
+    isAiSoundEnabled,
+    toggleAiSound,
   } = useAdept();
 
   const [inputQuestion, setInputQuestion] = useState('');
@@ -115,8 +118,8 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
       };
       setMessages([initialAssistantMsg]);
 
-      // Read aloud automatically using Web Speech Synthesis (Prompt 10)
-      if ('speechSynthesis' in window) {
+      // Read aloud automatically using Web Speech Synthesis (respects sound toggle)
+      if (isAiSoundEnabled && 'speechSynthesis' in window) {
         try {
           const utter = new SpeechSynthesisUtterance(whyHelper.fullText);
           utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
@@ -251,8 +254,8 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
 
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // If user asks for voice reading (or for elder), speak it gently
-      if (isElder && 'speechSynthesis' in window && !res.isEmergency) {
+      // If user asks for voice reading (or for elder), speak it gently (respects sound toggle)
+      if (isAiSoundEnabled && isElder && 'speechSynthesis' in window && !res.isEmergency) {
         try {
           const utter = new SpeechSynthesisUtterance(res.answer);
           utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
@@ -300,12 +303,38 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Sound Mute/Unmute Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleAiSound}
+              title={isAiSoundEnabled ? 'Adept Voice: ON (Tap to mute)' : 'Adept Voice: MUTED (Tap to unmute)'}
+              className={`h-9 px-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer border shadow-xs transition-all ${
+                isAiSoundEnabled
+                  ? 'bg-emerald-50 text-[#064e3b] border-emerald-300'
+                  : 'bg-slate-100 text-slate-500 border-slate-300'
+              }`}
+            >
+              {isAiSoundEnabled ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-[#064e3b]" />
+                  <span className="text-[11px] font-bold hidden sm:inline">Voice On</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-4 h-4 text-slate-500" />
+                  <span className="text-[11px] font-bold hidden sm:inline">Muted</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Quick Question Chips Bar */}

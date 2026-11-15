@@ -91,3 +91,4 @@ export const MedicineSafetyCard: React.FC<MedicineSafetyCardProps> = ({
     </div>
   );
 };
+

@@ -43,7 +43,7 @@ export const ElderSetupWizard: React.FC<ElderSetupWizardProps> = ({ onComplete, 
       // fallback
     }
     return {
-      name: 'Arthur Davies',
+      name: '',
       photoUrl: '',
       age: 78,
       language: 'en' as 'en' | 'hi',
@@ -93,7 +93,7 @@ export const ElderSetupWizard: React.FC<ElderSetupWizardProps> = ({ onComplete, 
     setIsSubmitting(true);
     try {
       await saveElderProfileAndCircle({
-        name: draft.name.trim() || 'Arthur Davies',
+        name: draft.name.trim() || 'My Elder',
         photoUrl: draft.photoUrl || '',
         age: Number(draft.age) || 78,
         language: draft.language,
@@ -104,7 +104,7 @@ export const ElderSetupWizard: React.FC<ElderSetupWizardProps> = ({ onComplete, 
         sleepTime: draft.sleepTime,
         doctorName: draft.doctorName.trim() || 'Dr. Evelyn Vance',
         doctorPhone: draft.doctorPhone.trim() || '(555) 234-5678',
-        emergencyContactName: draft.emergencyContactName.trim() || 'Sarah Davies',
+        emergencyContactName: draft.emergencyContactName.trim() || 'Family Caretaker',
         emergencyContactPhone: draft.emergencyContactPhone.trim() || '(555) 345-6789',
       });
 
@@ -154,7 +154,7 @@ export const ElderSetupWizard: React.FC<ElderSetupWizardProps> = ({ onComplete, 
                   What is your elder’s name?
                 </h2>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  We address Arthur personally throughout greetings, dose prompts, and family digests.
+                  We address your elder personally throughout daily greetings, dose reminders, and family digests.
                 </p>
               </div>
 
@@ -166,7 +166,7 @@ export const ElderSetupWizard: React.FC<ElderSetupWizardProps> = ({ onComplete, 
                   type="text"
                   value={draft.name}
                   onChange={(e) => updateDraft('name', e.target.value)}
-                  placeholder="Arthur Davies"
+                  placeholder="e.g. Dad, Mom, Eleanor, or Arthur Davies"
                   autoFocus
                   required
                   className="w-full h-14 px-4 rounded-xl border border-slate-200 text-lg font-bold text-slate-900 focus:outline-none focus:border-[#064e3b]"

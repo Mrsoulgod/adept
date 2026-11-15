@@ -70,7 +70,7 @@ export const FamilySettingsTab: React.FC = () => {
             </div>
             <div>
               <h2 className="text-sm font-black text-slate-900">
-                Set up Dad's Phone
+                Set up {activeElder.relationship || activeElder.name.split(' ')[0]}'s Phone
               </h2>
               <p className="text-[11px] text-slate-500">
                 15-min pairing code & QR code
@@ -83,7 +83,7 @@ export const FamilySettingsTab: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-600 leading-relaxed">
-          Generate a 6-digit pairing code for Arthur. He enters it once on the welcome screen and stays logged in forever with zero passwords.
+          Generate a 6-digit pairing code for {activeElder.name}. They enter it once on the welcome screen and stay logged in forever with zero passwords.
         </p>
 
         {/* Primary Set Up Dad's Phone Button (56px max touch target, h-12) */}

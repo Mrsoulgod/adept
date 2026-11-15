@@ -21,7 +21,7 @@ interface BaselineDeviationViewProps {
 }
 
 export const BaselineDeviationView: React.FC<BaselineDeviationViewProps> = ({ onOpenDigest }) => {
-  const { profile, medications, doseLogs, triggerDeviationAlert, triggerCaregiverDigest } = useAdept();
+  const { profile, activeElder, medications, doseLogs, triggerDeviationAlert, triggerCaregiverDigest } = useAdept();
   const [sendingAlert, setSendingAlert] = useState(false);
   const [sendingDigest, setSendingDigest] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -34,8 +34,8 @@ export const BaselineDeviationView: React.FC<BaselineDeviationViewProps> = ({ on
 
   // 2. Build full Caretaker timeline with "Normal for Dad" vs "Unusual" classifications
   const timelineEvents = useMemo(() => {
-    return buildCaretakerTimeline(medications, doseLogs, baselines);
-  }, [medications, doseLogs, baselines]);
+    return buildCaretakerTimeline(medications, doseLogs, baselines, activeElder.name.split(' ')[0]);
+  }, [medications, doseLogs, baselines, activeElder.name]);
 
   // 3. Filter timeline events
   const filteredEvents = useMemo(() => {
@@ -99,10 +99,10 @@ export const BaselineDeviationView: React.FC<BaselineDeviationViewProps> = ({ on
               Personal Baseline Engine
             </div>
             <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              Arthur's Learned Routine & Deviations
+              {activeElder.name.split(' ')[0]}'s Learned Routine & Deviations
             </h3>
             <p className="text-slate-600 text-sm mt-1 max-w-2xl">
-              Adept computes {profile.name}’s personal usual dose-time from historical logs. 
+              Adept computes {activeElder.name}’s personal usual dose-time from historical logs. 
               Caretakers are alerted <strong>only</strong> when behaviour truly deviates (late by &gt;60m, no response, or 2+ consecutive skips). Calm by default: green unless an anchor deviates.
             </p>
           </div>
@@ -147,7 +147,7 @@ export const BaselineDeviationView: React.FC<BaselineDeviationViewProps> = ({ on
 
                     <div className="mt-3 bg-white p-3 rounded-xl border border-slate-200 space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500">Arthur's Usual:</span>
+                        <span className="text-slate-500">{activeElder.name.split(' ')[0]}'s Usual:</span>
                         <span className="font-extrabold text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                           {b?.usualTimeString || '8:15 AM'}
                         </span>
@@ -202,13 +202,13 @@ export const BaselineDeviationView: React.FC<BaselineDeviationViewProps> = ({ on
 
               {latestDeviation?.comfortNote && (
                 <div className="mt-2 bg-amber-100/60 p-2.5 rounded-xl text-xs text-amber-900 font-medium">
-                  <strong>Arthur's comfort note:</strong> "{latestDeviation.comfortNote}"
+                  <strong>{activeElder.name.split(' ')[0]}'s comfort note:</strong> "{latestDeviation.comfortNote}"
                 </div>
               )}
 
               <div className="mt-4 bg-white/80 p-3.5 rounded-xl border border-amber-200 text-xs text-amber-950 space-y-1">
-                <div><strong>Calm Care Protocol:</strong> No sirens, no red shame flags. Arthur may be enjoying a longer walk or napping.</div>
-                <div>Alerting Sarah ({profile.caretakerEmail}) only because this event exceeds his 60-minute natural variance buffer.</div>
+                <div><strong>Calm Care Protocol:</strong> No sirens, no red shame flags. {activeElder.name.split(' ')[0]} may be enjoying a longer walk or napping.</div>
+                <div>Alerting caretaker ({profile.caretakerEmail}) only because this event exceeds natural variance buffer.</div>
               </div>
 
               {/* Toast */}
@@ -260,10 +260,10 @@ export const BaselineDeviationView: React.FC<BaselineDeviationViewProps> = ({ on
               </div>
 
               <h4 className="text-xl sm:text-2xl font-bold text-[#064e3b]">
-                Arthur is Within His Natural Baseline Rhythm
+                {activeElder.name.split(' ')[0]} is Within Their Natural Baseline Rhythm
               </h4>
               <p className="text-emerald-900 text-sm mt-1 leading-relaxed">
-                All medications are being taken within Arthur's customary windows. No urgent interruptions will be sent to caregivers. A quiet daily digest will be delivered at the conclusion of the day.
+                All medications are being taken within {activeElder.name.split(' ')[0]}'s customary windows. No urgent interruptions will be sent to caregivers. A quiet daily digest will be delivered at the conclusion of the day.
               </p>
 
               {noticeMessage && (
@@ -308,7 +308,7 @@ export const BaselineDeviationView: React.FC<BaselineDeviationViewProps> = ({ on
               Intake History & Personal Rhythm Labels
             </h3>
             <p className="text-slate-500 text-sm mt-0.5">
-              Every dose is evaluated against Arthur's baseline. Normal variances are quiet; deviations are marked with care.
+              Every dose is evaluated against {activeElder.name.split(' ')[0]}'s baseline. Normal variances are quiet; deviations are marked with care.
             </p>
           </div>
 

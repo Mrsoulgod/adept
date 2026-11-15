@@ -224,7 +224,9 @@ interface AdeptContextType {
   loveVoiceNote: (noteId: string) => void;
   requestFamilyCall: (targetName: string, elderName: string) => void;
 
-  // Prompt 8 & 10: Adept AI Sheet Controls
+  // Prompt 8 & 10: Adept AI Sheet Controls & Voice Audio
+  isAiSoundEnabled: boolean;
+  toggleAiSound: () => void;
   isAdeptSheetOpen: boolean;
   openAdeptSheet: (initialContext?: { med?: Medication; question?: string }) => void;
   closeAdeptSheet: () => void;
@@ -372,7 +374,28 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return INITIAL_FAMILY_VOICE_NOTES;
   });
 
-  // Prompt 8 & 10: Adept AI Sheet State
+  // Prompt 8 & 10: Adept AI Sheet State & Voice Audio Toggle
+  const [isAiSoundEnabled, setIsAiSoundEnabled] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('adept_ai_sound_enabled');
+      if (stored !== null) return stored === 'true';
+    } catch {}
+    return true;
+  });
+
+  const toggleAiSound = () => {
+    setIsAiSoundEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('adept_ai_sound_enabled', String(next));
+      } catch {}
+      if (!next && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      return next;
+    });
+  };
+
   const [isAdeptSheetOpen, setIsAdeptSheetOpen] = useState(false);
   const [adeptContextMed, setAdeptContextMed] = useState<Medication | null>(null);
   const [adeptInitialQuestion, setAdeptInitialQuestion] = useState<string>('');
@@ -1540,9 +1563,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
-      actorName: `${profile.name} (Elder)`,
+      actorName: `${activeElder.name} (Elder)`,
       action: `Confirmed ${med.friendlyName}`,
-      plainEnglishDescription: `Arthur confirmed taking his ${med.friendlyName} (${med.dosage}) with ${MEAL_ANCHORS[med.mealAnchor]?.label || 'meal'}.`,
+      plainEnglishDescription: `${activeElder.name.split(' ')[0]} confirmed taking their ${med.friendlyName} (${med.dosage}) with ${MEAL_ANCHORS[med.mealAnchor]?.label || 'meal'}.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
@@ -1564,7 +1587,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: 'skipped_comfortably',
       loggedAt: new Date().toISOString(),
       loggedBy: 'elder',
-      notes: note || 'Arthur chose to rest first. Sarah notified gently.',
+      notes: note || `${activeElder.name.split(' ')[0]} chose to rest first. Care team notified gently.`,
       comfortNote: note || 'Taking it easy this morning.',
     };
 
@@ -1579,7 +1602,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         medication_name: med.friendlyName,
         meal_anchor: med.mealAnchor,
         reason: 'defer_rest',
-        notes: note || 'Arthur chose to rest first. Sarah notified gently.',
+        notes: note || `${activeElder.name.split(' ')[0]} chose to rest first. Care team notified gently.`,
       },
       source: 'elder_app',
     });
@@ -1587,9 +1610,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
-      actorName: `${profile.name} (Elder)`,
+      actorName: `${activeElder.name} (Elder)`,
       action: `Chose to rest / defer ${med.friendlyName}`,
-      plainEnglishDescription: `Arthur chose to take his time before taking ${med.friendlyName}. No rush or shame.`,
+      plainEnglishDescription: `${activeElder.name.split(' ')[0]} chose to take time before taking ${med.friendlyName}. No rush or shame.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
@@ -1611,7 +1634,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: 'skipped_comfortably',
       loggedAt: new Date().toISOString(),
       loggedBy: 'elder',
-      notes: reason || 'Arthur decided to skip this dose today. Sarah notified quietly.',
+      notes: reason || `${activeElder.name.split(' ')[0]} decided to skip this dose today. Care team notified quietly.`,
       comfortNote: reason || 'Resting comfortably today.',
     };
 
@@ -1633,9 +1656,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
-      actorName: `${profile.name} (Elder)`,
+      actorName: `${activeElder.name} (Elder)`,
       action: `Skipped ${med.friendlyName} Comfortably`,
-      plainEnglishDescription: `Arthur chose to skip ${med.friendlyName} today. Logged calmly with zero penalty.`,
+      plainEnglishDescription: `${activeElder.name.split(' ')[0]} chose to skip ${med.friendlyName} today. Logged calmly with zero penalty.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
@@ -1661,9 +1684,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
-      actorName: `${profile.name} (Elder Check-in)`,
+      actorName: `${activeElder.name} (Elder Check-in)`,
       action: `Wellness Check-in: ${wellnessScore}`,
-      plainEnglishDescription: `Arthur shared his daily feeling: "${wellnessScore}". ${notes ? `Note: "${notes}".` : ''} Shared quietly with care team.`,
+      plainEnglishDescription: `${activeElder.name.split(' ')[0]} shared their daily feeling: "${wellnessScore}". ${notes ? `Note: "${notes}".` : ''} Shared quietly with care team.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
@@ -1765,9 +1788,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordAuditEntry({
           id: `audit-${Date.now()}`,
           actorRole: 'elder',
-          actorName: `${profile.name} (Elder Confirmation)`,
+          actorName: `${activeElder.name} (Elder Confirmation)`,
           action: `Approved New Medication: ${newMed.friendlyName}`,
-          plainEnglishDescription: `Arthur reviewed Dr. Vance's prescription proposal and approved adding ${newMed.friendlyName} (${newMed.dosage}) with ${MEAL_ANCHORS[newMed.mealAnchor]?.label}.`,
+          plainEnglishDescription: `${activeElder.name.split(' ')[0]} reviewed ${activeElder.doctorName || 'the doctor'}'s prescription proposal and approved adding ${newMed.friendlyName} (${newMed.dosage}) with ${MEAL_ANCHORS[newMed.mealAnchor]?.label}.`,
           timestamp: new Date().toISOString(),
           canElderVeto: true,
           isVetoed: false,
@@ -1778,9 +1801,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       recordAuditEntry({
         id: `audit-${Date.now()}`,
         actorRole: 'elder',
-        actorName: `${profile.name} (Elder Decision)`,
+        actorName: `${activeElder.name} (Elder Decision)`,
         action: `Declined Proposal: ${proposal.title}`,
-        plainEnglishDescription: `Arthur reviewed the suggested routine for ${proposal.title} and decided to decline for now. Routine remains unchanged.`,
+        plainEnglishDescription: `${activeElder.name.split(' ')[0]} reviewed the suggested routine for ${proposal.title} and decided to decline for now. Routine remains unchanged.`,
         timestamp: new Date().toISOString(),
         canElderVeto: false,
         isVetoed: false,
@@ -1813,9 +1836,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
-      actorName: `${profile.name} (ELDER VETO)`,
+      actorName: `${activeElder.name} (ELDER VETO)`,
       action: `Vetoed: ${item.action}`,
-      plainEnglishDescription: `Arthur exercised his Elder Veto power on "${item.action}". The action has been completely rolled back.`,
+      plainEnglishDescription: `${activeElder.name.split(' ')[0]} exercised their Elder Veto power on "${item.action}". The action has been completely rolled back.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
@@ -1839,7 +1862,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       actorRole: 'caretaker',
       actorName: `${profile.caretakerName}`,
       action: `Created AI Schedule Proposal: ${newProposal.title}`,
-      plainEnglishDescription: `Prescription parsed via Gemini Vision. Proposal generated for Arthur's approval: ${newProposal.summary}`,
+      plainEnglishDescription: `Prescription parsed via Gemini Vision. Proposal generated for ${activeElder.name.split(' ')[0]}'s approval: ${newProposal.summary}`,
       timestamp: new Date().toISOString(),
       canElderVeto: true,
       isVetoed: false,
@@ -1979,9 +2002,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
-      actorName: `${profile.name} (Approved)`,
+      actorName: `${activeElder.name} (Approved)`,
       action: `Affirmed: ${item.action}`,
-      plainEnglishDescription: `Arthur reviewed "${item.action}" and affirmed keeping it active in his routine.`,
+      plainEnglishDescription: `${activeElder.name.split(' ')[0]} reviewed "${item.action}" and affirmed keeping it active in their routine.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
@@ -2009,19 +2032,19 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const magicUrl = `${window.location.origin}/?role=caretaker&magic=digest_${Date.now()}`;
 
     const html = buildCaregiverDigestHtml({
-      elderName: profile.name,
+      elderName: activeElder.name,
       dateStr: todayStr,
       adherenceRate: adherence,
       morningStatus: morningTaken ? 'Taken with breakfast' : 'Pending morning window',
       lunchStatus: lunchTaken ? 'Taken after lunch' : 'Scheduled 12:00 PM – 2:30 PM',
       dinnerStatus: dinnerTaken ? 'Taken with dinner' : 'Scheduled 6:00 PM – 8:30 PM',
-      notes: 'Arthur reported feeling steady and rested. Enjoyed morning tea with toast.',
+      notes: `${activeElder.name.split(' ')[0]} reported feeling steady and rested.`,
       magicLink: magicUrl,
     });
 
     const res = await sendEmailViaResend({
       to: emailToUse,
-      subject: `Arthur's Daily Care Digest: Calm & Steady (${adherence}%)`,
+      subject: `${activeElder.name.split(' ')[0]}'s Daily Care Digest: Calm & Steady (${adherence}%)`,
       html,
       apiKey: settings.resendApiKey,
       magicUrl,
@@ -2037,17 +2060,17 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const magicUrl = `${window.location.origin}/?role=caretaker&action=remind&anchor=${mealAnchor}`;
 
     const html = buildDeviationAlertHtml({
-      elderName: profile.name,
+      elderName: activeElder.name,
       mealAnchorLabel: anchorConfig.label,
       windowLabel: anchorConfig.windowLabel,
       delayedByStr: 'approx. 45 minutes ago',
-      comfortNote: 'Arthur took a longer rest in the garden chair this morning.',
+      comfortNote: `${activeElder.name.split(' ')[0]} is resting comfortably this morning.`,
       magicLink: magicUrl,
     });
 
     const res = await sendEmailViaResend({
       to: profile.caretakerEmail,
-      subject: `Arthur’s Routine Check: ${anchorConfig.label} window update`,
+      subject: `${activeElder.name.split(' ')[0]}’s Routine Check: ${anchorConfig.label} window update`,
       html,
       apiKey: settings.resendApiKey,
       magicUrl,
@@ -2190,7 +2213,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         markVoiceNotePlayed,
         loveVoiceNote,
         requestFamilyCall,
-        // Prompt 8 & 10 Adept AI Sheet Controls
+        // Prompt 8 & 10 Adept AI Sheet Controls & Voice Sound Toggle
+        isAiSoundEnabled,
+        toggleAiSound,
         isAdeptSheetOpen,
         openAdeptSheet,
         closeAdeptSheet,

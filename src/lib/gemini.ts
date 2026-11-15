@@ -209,7 +209,7 @@ export async function generateDoctorBriefWithGemini(
       totalDosesTaken: takenCount,
       totalDosesScheduled: scheduledCount,
       deviationsRecorded: 1,
-      reportedWellnessSummary: `Overall steady vitals. Average BP: ${avgSys}/${avgDia} mmHg, Fasting Sugar: ${avgSugar} mg/dL, Weight: ${latestWeight} kg. Morning routine is highly consistent (96% adherence within 7-10 AM). Arthur reported minor knee tightness on two days following garden walks; midday Glucosamine continues to provide relief.`,
+      reportedWellnessSummary: `Overall steady vitals. Average BP: ${avgSys}/${avgDia} mmHg, Fasting Sugar: ${avgSugar} mg/dL, Weight: ${latestWeight} kg. Morning routine is highly consistent (96% adherence within 7-10 AM). ${profile.name.split(' ')[0]} reported steady energy; daily regimen continues to provide comfortable relief.`,
       symptomTrends: defaultSymptomTrends,
       activeMedications: medications.map((m) => ({
         name: `${m.name} (${m.dosage})`,
@@ -218,12 +218,12 @@ export async function generateDoctorBriefWithGemini(
         adherenceRate: 98,
       })),
       notableObservations: [
-        `Clinical vitals confirmed: Average BP ${avgSys}/${avgDia} mmHg (within Dr. Vance's target window).`,
-        `Fasting glucose steady at ${avgSugar} mg/dL; Metformin 500mg morning anchor well tolerated.`,
+        `Clinical vitals confirmed: Average BP ${avgSys}/${avgDia} mmHg (within ${profile.doctorName || 'physician'}'s target window).`,
+        `Fasting glucose steady at ${avgSugar} mg/dL; morning anchor well tolerated.`,
         'Excellent morning anchor compliance (average time 8:15 AM with breakfast).',
         'One comfortable evening delay noted on Thursday (family dinner visit); taken safely 40 mins later.',
-        'Zero adverse medication reactions reported by Arthur or Sarah.',
-        'Knee joint comfort shows slight seasonal stiffness; patient inquiring about Vitamin D3 continuation.',
+        `Zero adverse medication reactions reported by ${profile.name.split(' ')[0]} or care team.`,
+        'Joint comfort and resting baselines steady.',
       ],
       elderQuestionsForDoctor: [
         'Can I continue taking Glucosamine with my lunch, or is morning better?',
@@ -300,7 +300,7 @@ Produce a JSON response matching:
       totalDosesTaken: takenCount,
       totalDosesScheduled: scheduledCount,
       deviationsRecorded: 1,
-      reportedWellnessSummary: 'Arthur shows consistent adherence across all anchors, with steady energy and appetite.',
+      reportedWellnessSummary: `${profile.name.split(' ')[0]} shows consistent adherence across all anchors, with steady energy and appetite.`,
       symptomTrends: defaultSymptomTrends,
       activeMedications: medications.map((m) => ({
         name: `${m.name} (${m.dosage})`,
@@ -336,7 +336,7 @@ export async function parsePostVisitVoiceNote(
     await new Promise((resolve) => setTimeout(resolve, 1400));
     return {
       summary:
-        "Dr. Vance reviewed Arthur's steady blood pressure and addressed recent knee stiffness. She advised discontinuing Glucosamine, initiating Celecoxib 100mg after lunch, and increasing the evening heart tablet (Atorvastatin) from 20mg to 40mg.",
+        "The physician reviewed steady blood pressure and addressed joint comfort. Suggested adjustments were prepared for the elder to confirm.",
       doctorComments:
         'Blood pressure is well controlled (128/82). Transitioning joint therapy to targeted COX-2 anti-inflammatory. Cholesterol profile warrants higher evening statin dose.',
       proposedChanges: [
@@ -375,7 +375,7 @@ You are an expert clinical pharmacy assistant for Adept, an elderly medication p
 A caregiver or elder recorded a voice note summarizing their appointment with Dr. Evelyn Vance:
 "${voiceTranscript}"
 
-Current active medications for Arthur Davies:
+Current active medications for the elder:
 ${currentMedications.map((m) => `- ${m.name} (${m.friendlyName}), ${m.dosage}, ${m.mealAnchor}`).join('\n')}
 
 Analyze this post-visit note and extract proposed schedule changes.
@@ -435,8 +435,8 @@ Return STRICT JSON only, without markdown fences or backticks:
     console.warn('Gemini post-visit parsing fallback:', err);
     return {
       summary:
-        "Dr. Vance reviewed Arthur's vitals. Schedule adjustments proposed for joint comfort and cholesterol protection.",
-      doctorComments: 'Routine review complete. Suggested updates prepared for Arthur to confirm.',
+        "The physician reviewed vitals. Schedule adjustments proposed for joint comfort and cholesterol protection.",
+      doctorComments: 'Routine review complete. Suggested updates prepared for the elder to confirm.',
       proposedChanges: [
         {
           action: 'add',

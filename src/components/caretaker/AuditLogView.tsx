@@ -12,7 +12,7 @@ import type { EditSource } from '../../lib/types';
 import { EDIT_SOURCE_LABELS } from '../../lib/types';
 
 export const AuditLogView: React.FC = () => {
-  const { auditLogs, elderVetoAction, elderApproveAuditAction } = useAdept();
+  const { auditLogs, elderVetoAction, elderApproveAuditAction, activeElder } = useAdept();
   const [filterMode, setFilterMode] = useState<'all' | 'vetoable' | 'vetoed'>('all');
 
   const filteredLogs = auditLogs.filter((log) => {
@@ -49,7 +49,7 @@ export const AuditLogView: React.FC = () => {
             Regimen Audit Log & Elder Veto
           </h3>
           <p className="text-slate-600 text-sm mt-0.5 max-w-2xl">
-            Design Law: <strong>Every edit requires a source.</strong> Arthur holds perpetual veto power over any change made by caretakers or family.
+            Design Law: <strong>Every edit requires a source.</strong> {activeElder.name.split(' ')[0]} holds perpetual veto power over any change made by caretakers or family.
           </p>
         </div>
 
@@ -146,7 +146,7 @@ export const AuditLogView: React.FC = () => {
                 {item.isVetoed ? (
                   <span className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-950 border border-amber-300 px-3.5 py-1.5 rounded-full text-xs font-bold">
                     <AlertCircle className="w-4 h-4 text-amber-800" />
-                    <span>Vetoed by Arthur</span>
+                    <span>Vetoed by {activeElder.name.split(' ')[0]}</span>
                   </span>
                 ) : item.canElderVeto ? (
                   <div className="flex items-center gap-2">

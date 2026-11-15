@@ -119,7 +119,7 @@ export function buildCaregiverDigestHtml(params: {
                   </td>
                   <td>
                     <h3 style="margin: 0; color: #065f46; font-size: 16px;">Calm Baseline Maintained</h3>
-                    <p style="margin: 4px 0 0; color: #047857; font-size: 14px;">Arthur is on track with scheduled meal-anchor medication windows today.</p>
+                    <p style="margin: 4px 0 0; color: #047857; font-size: 14px;">${elderName} is on track with scheduled meal-anchor medication windows today.</p>
                   </td>
                 </tr>
               </table>
@@ -152,7 +152,7 @@ export function buildCaregiverDigestHtml(params: {
           <tr>
             <td style="padding: 0 24px 20px 24px;">
               <div style="background-color: #f8fafc; border-radius: 8px; padding: 14px; border-left: 3px solid #cbd5e1;">
-                <strong style="color: #475569; font-size: 13px; text-transform: uppercase;">Arthur's Daily Note:</strong>
+                <strong style="color: #475569; font-size: 13px; text-transform: uppercase;">${elderName}'s Daily Note:</strong>
                 <p style="margin: 6px 0 0; color: #334155; font-size: 14px;">"${notes}"</p>
               </div>
             </td>
@@ -221,11 +221,11 @@ export function buildDeviationAlertHtml(params: {
                   ${mealAnchorLabel} window passed ${delayedByStr}
                 </h3>
                 <p style="margin: 8px 0 0; color: #78350f; font-size: 14px; line-height: 1.5;">
-                  The standard window for ${mealAnchorLabel} is <strong>${windowLabel}</strong>. Arthur has not checked this off yet.
+                  The standard window for ${mealAnchorLabel} is <strong>${windowLabel}</strong>. ${elderName.split(' ')[0]} has not checked this off yet.
                 </p>
                 ${comfortNote ? `
                   <div style="margin-top: 10px; padding: 10px; background-color: #fef3c7; border-radius: 6px; font-size: 13px; color: #92400e;">
-                    <strong>Arthur’s earlier note:</strong> "${comfortNote}"
+                    <strong>${elderName.split(' ')[0]}’s earlier note:</strong> "${comfortNote}"
                   </div>
                 ` : ''}
               </div>
@@ -237,9 +237,9 @@ export function buildDeviationAlertHtml(params: {
             <td style="padding: 0 24px 16px 24px;">
               <h4 style="margin: 0 0 8px 0; color: #475569; font-size: 14px;">How to check in calmly:</h4>
               <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.6;">
-                <li>Give Arthur a relaxed phone call or ask if he’s enjoying breakfast.</li>
+                <li>Give ${elderName.split(' ')[0]} a relaxed phone call or ask if they’re enjoying their meal.</li>
                 <li>Avoid urgency or alarming words — elders often take meals at shifted hours.</li>
-                <li>Tap the button below to prompt a single warm question on his tablet screen.</li>
+                <li>Tap the button below to prompt a single warm question on their screen.</li>
               </ul>
             </td>
           </tr>

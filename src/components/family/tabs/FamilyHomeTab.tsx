@@ -125,7 +125,7 @@ export const FamilyHomeTab: React.FC = () => {
               {activeElder.name}'s phone is not connected yet.
             </h1>
             <p className="text-amber-800 text-xs mt-1.5 leading-relaxed">
-              Once {activeElder.relationship || 'Dad'} enters the 6-digit code on their tablet or phone, live adherence, confirmed meal doses, and daily check-ins will appear here automatically.
+              Once {activeElder.relationship || activeElder.name.split(' ')[0]} enters the 6-digit code on their tablet or phone, live adherence, confirmed meal doses, and daily check-ins will appear here automatically.
             </p>
           </div>
 
@@ -136,7 +136,7 @@ export const FamilyHomeTab: React.FC = () => {
               className="w-full h-14 bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-98 transition-all"
             >
               <Smartphone className="w-5 h-5 text-emerald-300" />
-              <span>Set up {activeElder.relationship || 'Dad'}'s Phone (Code & QR)</span>
+              <span>Set up {activeElder.relationship || activeElder.name.split(' ')[0]}'s Phone (Code & QR)</span>
             </button>
 
             <button
@@ -170,7 +170,7 @@ export const FamilyHomeTab: React.FC = () => {
 
           <div>
             <h1 className="text-2xl font-black tracking-tight">
-              {activeElder.relationship || 'Dad'} is {activeElder.healthStatus || 'resting comfortably'}.
+              {activeElder.relationship || activeElder.name.split(' ')[0]} is {activeElder.healthStatus || 'resting comfortably'}.
             </h1>
             <p className="text-emerald-100 text-xs mt-1 leading-relaxed">
               {activeElder.name} ({activeElder.age}) • Routine synced from {activeElder.pairedDeviceName || "tablet"}.
@@ -225,7 +225,7 @@ export const FamilyHomeTab: React.FC = () => {
         </button>
 
         <button
-          onClick={() => openAdeptSheet({ question: "How was Dad's week?" })}
+          onClick={() => openAdeptSheet({ question: `How was ${activeElder.relationship || activeElder.name.split(' ')[0]}'s week?` })}
           className="h-12 bg-emerald-800 hover:bg-emerald-900 text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-300" />

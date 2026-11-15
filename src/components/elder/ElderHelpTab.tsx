@@ -1,10 +1,31 @@
 import React, { useState } from 'react';
 import { useAdept } from '../../context/AdeptContext';
-import { ShieldAlert, Check, Stethoscope, AlertOctagon, Undo2, Play, Pill } from 'lucide-react';
+import {
+  ShieldAlert,
+  Check,
+  Stethoscope,
+  AlertOctagon,
+  Undo2,
+  Play,
+  Pill,
+  LogOut,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { PracticeModeModal } from '../walkthrough/WalkthroughTour';
 
 export const ElderHelpTab: React.FC = () => {
-  const { profile, auditLogs, elderVetoAction, elderApproveAuditAction, startWalkthroughTour, language } = useAdept();
+  const {
+    profile,
+    auditLogs,
+    elderVetoAction,
+    elderApproveAuditAction,
+    startWalkthroughTour,
+    language,
+    logoutUser,
+    isAiSoundEnabled,
+    toggleAiSound,
+  } = useAdept();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [practiceModalOpen, setPracticeModalOpen] = useState(false);
 
@@ -152,7 +173,7 @@ export const ElderHelpTab: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-500">
-          Arthur, you have final authority. If Sarah or your doctor changed a pill timing or dosage and you prefer not to take it, tap <strong>Undo / Veto</strong> to roll it back instantly.
+          {profile.name.split(' ')[0]}, you have final authority. If your care team or doctor changed a pill timing or dosage and you prefer not to take it, tap <strong>Undo / Veto</strong> to roll it back instantly.
         </p>
 
         {vetoableItems.length === 0 ? (
@@ -179,7 +200,7 @@ export const ElderHelpTab: React.FC = () => {
                   </div>
                   {item.isVetoed ? (
                     <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded-full">
-                      Vetoed by Arthur
+                      Vetoed by {profile.name.split(' ')[0]}
                     </span>
                   ) : (
                     <span className="text-[10px] bg-emerald-100 text-[#064e3b] font-extrabold px-2 py-0.5 rounded-full">
@@ -217,6 +238,90 @@ export const ElderHelpTab: React.FC = () => {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Adept Voice Sound Setting (Prompt requirement: toggle sound of Adept AI) */}
+      <div className="bg-white border-2 border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold ${
+              isAiSoundEnabled ? 'bg-emerald-100 text-[#064e3b]' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {isAiSoundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </div>
+            <div>
+              <h2 className="text-base font-black text-slate-900">
+                {language === 'hi' ? 'एडेप्ट एआई की आवाज़ (साउंड)' : 'Adept AI Voice Sound'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {isAiSoundEnabled
+                  ? (language === 'hi' ? 'आवाज़ चालू है • उत्तर बोलकर सुनाए जाते हैं' : 'Sound is ON • Answers read aloud')
+                  : (language === 'hi' ? 'आवाज़ बंद (म्यूट) है • शांत मोड' : 'Sound is MUTED • Quiet silent mode')}
+              </p>
+            </div>
+          </div>
+          <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+            isAiSoundEnabled ? 'bg-emerald-100 text-[#064e3b]' : 'bg-slate-100 text-slate-600'
+          }`}>
+            {isAiSoundEnabled ? 'ON' : 'MUTED'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={toggleAiSound}
+          className={`w-full h-12 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98 transition-all ${
+            isAiSoundEnabled
+              ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
+              : 'bg-[#064e3b] hover:bg-[#043d2e] text-white'
+          }`}
+        >
+          {isAiSoundEnabled ? (
+            <>
+              <VolumeX className="w-4 h-4 text-slate-600" />
+              <span>{language === 'hi' ? 'आवाज़ बंद करें (म्यूट करें)' : 'Turn Sound OFF (Mute Voice)'}</span>
+            </>
+          ) : (
+            <>
+              <Volume2 className="w-4 h-4 text-emerald-300" />
+              <span>{language === 'hi' ? 'आवाज़ चालू करें' : 'Turn Sound ON (Enable Voice)'}</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Elder Device Log Out Option (Prompt requirement: log out in elder profile) */}
+      <div className="bg-white border-2 border-red-200/80 rounded-3xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center font-bold">
+              <LogOut className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-slate-900">
+                {language === 'hi' ? 'प्रोफ़ाइल से लॉग आउट करें' : 'Log Out of Elder Profile'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {language === 'hi' ? 'इस डिवाइस को डिस्कनेक्ट करें' : 'Disconnect this device or change account'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {language === 'hi'
+            ? 'लॉग आउट करने पर आप वेलकम स्क्रीन पर लौट जाएंगे। दोबारा कनेक्ट करने के लिए नया 6-अंकीय कोड चाहिए होगा।'
+            : 'Logging out will disconnect this tablet and return to the Welcome screen. To reconnect, enter the 6-digit code shown on the family phone.'}
+        </p>
+
+        <button
+          type="button"
+          onClick={logoutUser}
+          className="w-full h-12 bg-red-50 hover:bg-red-100 border border-red-300 text-red-700 rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98 transition-all"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>{language === 'hi' ? 'लॉग आउट करें (डिवाइस डिस्कनेक्ट)' : 'Log Out of Elder Profile'}</span>
+        </button>
       </div>
 
       {/* Practice Mode Safe Sandbox Modal */}

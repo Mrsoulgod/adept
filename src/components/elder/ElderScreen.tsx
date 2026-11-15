@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   MessageCircle,
   PhoneCall,
+  LogOut,
+  VolumeX,
 } from 'lucide-react';
 import { EmergencySosModal } from '../emergency/EmergencySosModal';
 import { CareCircleChatModal } from '../chat/CareCircleChatModal';
@@ -49,6 +51,9 @@ export const ElderScreen: React.FC = () => {
     closeAdeptSheet,
     adeptContextMed,
     adeptInitialQuestion,
+    logoutUser,
+    isAiSoundEnabled,
+    toggleAiSound,
   } = useAdept();
 
   const [activeView, setActiveView] = useState<'main' | 'veto'>('main');
@@ -142,9 +147,9 @@ export const ElderScreen: React.FC = () => {
       steady: 'Steady & Calm',
       tired: 'A bit tired',
       discomfort: 'Discomfort / Pain',
-      thankYouFeeling: 'Thank you, Arthur! Your comfort status has been shared with Sarah.',
+      thankYouFeeling: `Thank you, ${profile.name.split(' ')[0]}! Your comfort status has been shared with your care team.`,
       reviewVeto: 'Review routine changes or cancel an update',
-      allCaughtUpTitle: 'Everything is steady, Arthur.',
+      allCaughtUpTitle: `Everything is steady, ${profile.name.split(' ')[0]}.`,
       allCaughtUpBody: 'You have taken your scheduled medicines for this window. Enjoy your day.',
       vetoTitle: 'Recent Routine Changes & Veto',
       vetoDesc: 'You have ultimate authority. Tap Veto to cancel any change made by Sarah or Dr. Vance.',
@@ -260,12 +265,12 @@ export const ElderScreen: React.FC = () => {
             : `Voice heard: "${transcript}" • Confirmed!`;
         setFeedbackNotice(confirmMsg);
 
-        // Gentle voice reassurance
-        if ('speechSynthesis' in window) {
+        // Gentle voice reassurance (respects sound toggle)
+        if (isAiSoundEnabled && 'speechSynthesis' in window) {
           const utter = new SpeechSynthesisUtterance(
             language === 'hi'
-              ? 'बहुत बढ़िया आर्थर जी, आपकी दवाई दर्ज हो गई है।'
-              : 'Wonderful Arthur, your dose has been recorded.'
+              ? `बहुत बढ़िया ${profile.name.split(' ')[0]} जी, आपकी दवाई दर्ज हो गई है।`
+              : `Wonderful ${profile.name.split(' ')[0]}, your dose has been recorded.`
           );
           utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
           window.speechSynthesis.speak(utter);
@@ -356,7 +361,7 @@ export const ElderScreen: React.FC = () => {
     openAdeptSheet({ med, question: `Why this pill: ${med.friendlyName}?` });
     try {
       const helper = await getWhyThisPillHelper(med, language);
-      if ('speechSynthesis' in window) {
+      if (isAiSoundEnabled && 'speechSynthesis' in window) {
         const spoken = `${helper.whatItIsFor} ${helper.howToTake} ${helper.oneThingToWatch}`;
         const utter = new SpeechSynthesisUtterance(spoken);
         utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
@@ -666,21 +671,40 @@ export const ElderScreen: React.FC = () => {
               <span>{nextPendingMed ? t.windowOpen : t.allCalm}</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {/* Ask Adept AI Trigger Button */}
               <button
                 onClick={() => openAdeptSheet({ question: "What's next for today?" })}
-                className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
+                className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Ask Adept</span>
+                <span className="hidden sm:inline">Ask</span>
+                <span>Adept</span>
+              </button>
+
+              {/* Adept Voice Audio Mute/Unmute Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleAiSound}
+                title={isAiSoundEnabled ? 'Adept Voice: ON (Tap to mute)' : 'Adept Voice: MUTED (Tap to unmute)'}
+                className={`h-8 px-2 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs active:scale-95 transition-all border ${
+                  isAiSoundEnabled
+                    ? 'bg-emerald-50 text-[#064e3b] border-emerald-300'
+                    : 'bg-slate-100 text-slate-500 border-slate-300'
+                }`}
+              >
+                {isAiSoundEnabled ? (
+                  <Volume2 className="w-3.5 h-3.5 text-[#064e3b]" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                )}
               </button>
 
               {/* Language Switcher */}
-              <div className="flex items-center bg-white border border-[#EAE5DB] p-1 rounded-2xl shadow-xs">
+              <div className="flex items-center bg-white border border-[#EAE5DB] p-0.5 rounded-xl shadow-xs">
                 <button
                   onClick={() => setLanguage('en')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     language === 'en'
                       ? 'bg-[#244937] text-white shadow-xs'
                       : 'text-[#70756F] hover:text-[#1A1D1A]'
@@ -690,7 +714,7 @@ export const ElderScreen: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setLanguage('hi')}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     language === 'hi'
                       ? 'bg-[#244937] text-white shadow-xs'
                       : 'text-[#70756F] hover:text-[#1A1D1A]'
@@ -699,6 +723,16 @@ export const ElderScreen: React.FC = () => {
                   हिंदी
                 </button>
               </div>
+
+              {/* Log Out of Elder Tablet Button */}
+              <button
+                type="button"
+                onClick={logoutUser}
+                title="Log Out of Elder Profile"
+                className="h-8 w-8 rounded-xl bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 flex items-center justify-center cursor-pointer shadow-xs active:scale-95 transition-all"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
@@ -874,8 +908,8 @@ export const ElderScreen: React.FC = () => {
                   confirmDose(nextPendingMed.id);
                   setFeedbackNotice(
                     language === 'hi'
-                      ? `शाबाश आर्थर जी! ${nextPendingMed.friendlyName} ले ली गई है।`
-                      : `Wonderful Arthur! ${nextPendingMed.friendlyName} confirmed.`
+                      ? `शाबाश ${profile.name.split(' ')[0]} जी! ${nextPendingMed.friendlyName} ले ली गई है।`
+                      : `Wonderful ${profile.name.split(' ')[0]}! ${nextPendingMed.friendlyName} confirmed.`
                   );
                 }}
                 className="w-full min-h-[72px] bg-[#244937] hover:bg-[#1B3729] text-white text-2xl font-bold rounded-2xl px-6 py-5 flex items-center justify-center gap-3 shadow-md active:scale-98 cursor-pointer transition-all"
@@ -892,7 +926,7 @@ export const ElderScreen: React.FC = () => {
                     setFeedbackNotice(
                       language === 'hi'
                         ? 'कोई जल्दी नहीं है। थोड़ी देर बाद याद दिलाएंगे।'
-                        : 'Take your time, Arthur. We will check in later.'
+                        : `Take your time, ${profile.name.split(' ')[0]}. We will check in later.`
                     );
                   }}
                   className="w-full min-h-[64px] bg-[#FBF5EA] hover:bg-[#F5EAD3] text-[#7A4F13] border-2 border-[#EBDBC1] text-xl font-bold rounded-2xl px-4 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
@@ -904,11 +938,11 @@ export const ElderScreen: React.FC = () => {
                 {/* 3. SKIP (Gentle Amber, No Shame) */}
                 <button
                   onClick={() => {
-                    skipDoseComfortably(nextPendingMed.id, 'Arthur chose to rest today.');
+                    skipDoseComfortably(nextPendingMed.id, `${profile.name.split(' ')[0]} chose to rest today.`);
                     setFeedbackNotice(
                       language === 'hi'
-                        ? 'आज के लिए यह खुराक छोड़ दी गई है। सारा को सूचित कर दिया गया है।'
-                        : 'Dose skipped comfortably today. Sarah informed.'
+                        ? 'आज के लिए यह खुराक छोड़ दी गई है। केयर टीम को सूचित कर दिया गया है।'
+                        : 'Dose skipped comfortably today. Care team informed.'
                     );
                   }}
                   className="w-full min-h-[64px] bg-white hover:bg-[#FAF8F5] text-[#474C46] border-2 border-[#D8D1C3] text-xl font-bold rounded-2xl px-4 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"

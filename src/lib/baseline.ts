@@ -144,23 +144,24 @@ export function classifyDoseBehaviour(params: {
   baseline: MedicationBaseline;
   log?: DoseLog;
   currentHourMinutes?: number;
+  elderName?: string;
 }): {
   classification: DeviationClassification;
   reason: string;
   shouldAlertCaretaker: boolean;
 } {
-  const { baseline, log, currentHourMinutes } = params;
+  const { baseline, log, currentHourMinutes, elderName = 'Arthur' } = params;
 
   // Case A: A dose was taken
   if (log && log.status === 'taken' && log.loggedAt) {
     const actualMinutes = timeStringToMinutes(log.loggedAt);
     const diffMinutes = Math.abs(actualMinutes - baseline.usualTimeMinutes);
 
-    // If within 60 minutes of Arthur's personal rhythm -> Normal
+    // If within 60 minutes of personal rhythm -> Normal
     if (diffMinutes <= 60) {
       return {
         classification: 'normal_for_dad',
-        reason: `Taken at ${minutesToTimeString(actualMinutes)}, within Arthur's typical rhythm (${baseline.usualTimeString} ± 35m).`,
+        reason: `Taken at ${minutesToTimeString(actualMinutes)}, within ${elderName}'s typical rhythm (${baseline.usualTimeString} ± 35m).`,
         shouldAlertCaretaker: false,
       };
     } else {
@@ -170,8 +171,8 @@ export function classifyDoseBehaviour(params: {
       return {
         classification: 'unusual',
         reason: isLate
-          ? `Taken at ${minutesToTimeString(actualMinutes)} (${Math.abs(delta)} mins later than Arthur's usual ${baseline.usualTimeString}).`
-          : `Taken at ${minutesToTimeString(actualMinutes)} (${Math.abs(delta)} mins earlier than Arthur's usual ${baseline.usualTimeString}).`,
+          ? `Taken at ${minutesToTimeString(actualMinutes)} (${Math.abs(delta)} mins later than ${elderName}'s usual ${baseline.usualTimeString}).`
+          : `Taken at ${minutesToTimeString(actualMinutes)} (${Math.abs(delta)} mins earlier than ${elderName}'s usual ${baseline.usualTimeString}).`,
         shouldAlertCaretaker: true,
       };
     }
@@ -190,11 +191,11 @@ export function classifyDoseBehaviour(params: {
   if (currentHourMinutes !== undefined) {
     const minutesPastUsual = currentHourMinutes - baseline.usualTimeMinutes;
 
-    // If > 75 minutes past Arthur's usual personal time without log -> Unusual (no response)
+    // If > 75 minutes past usual personal time without log -> Unusual (no response)
     if (minutesPastUsual > 75) {
       return {
         classification: 'unusual',
-        reason: `No confirmation logged. Current time is ${Math.round(minutesPastUsual)} mins past Arthur's personal dose time (${baseline.usualTimeString}).`,
+        reason: `No confirmation logged. Current time is ${Math.round(minutesPastUsual)} mins past ${elderName}'s personal dose time (${baseline.usualTimeString}).`,
         shouldAlertCaretaker: true,
       };
     }
@@ -202,7 +203,7 @@ export function classifyDoseBehaviour(params: {
 
   return {
     classification: 'normal_for_dad',
-    reason: `Within Arthur's expected routine (${baseline.usualTimeString}).`,
+    reason: `Within ${elderName}'s expected routine (${baseline.usualTimeString}).`,
     shouldAlertCaretaker: false,
   };
 }
@@ -213,7 +214,8 @@ export function classifyDoseBehaviour(params: {
 export function buildCaretakerTimeline(
   medications: Medication[],
   doseLogs: DoseLog[],
-  baselines: Record<string, MedicationBaseline>
+  baselines: Record<string, MedicationBaseline>,
+  elderName?: string
 ): TimelineDoseEvent[] {
   const events: TimelineDoseEvent[] = [];
 
@@ -242,6 +244,7 @@ export function buildCaretakerTimeline(
       medication: med,
       baseline: baseline as any,
       log,
+      elderName,
     });
 
     events.push({

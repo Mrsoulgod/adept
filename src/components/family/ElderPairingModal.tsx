@@ -21,6 +21,7 @@ export const ElderPairingModal: React.FC<ElderPairingModalProps> = ({ onClose })
     regeneratePairingCode,
     elderDevices,
     revokeElderDevice,
+    activeElder,
   } = useAdept();
 
   const [copied, setCopied] = useState(false);
@@ -62,7 +63,9 @@ export const ElderPairingModal: React.FC<ElderPairingModalProps> = ({ onClose })
               <Tablet className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-extrabold text-slate-900 text-base">Set up Dad's Phone</h3>
+              <h3 className="font-extrabold text-slate-900 text-base">
+                Set up {activeElder.relationship || activeElder.name.split(' ')[0]}'s Phone
+              </h3>
               <p className="text-[11px] text-slate-500 font-semibold">Prompt 4: Permanent elder pairing</p>
             </div>
           </div>
@@ -138,7 +141,7 @@ export const ElderPairingModal: React.FC<ElderPairingModalProps> = ({ onClose })
           )}
 
           <p className="text-[11px] text-slate-500 leading-tight">
-            On Dad's phone, open Adept and tap <strong>"I'm the elder"</strong>. Enter this code once and he stays logged in permanently.
+            On {activeElder.relationship || activeElder.name.split(' ')[0]}'s phone, open Adept and tap <strong>"I'm the elder"</strong>. Enter this code once and stay logged in permanently.
           </p>
         </div>
 

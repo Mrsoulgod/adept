@@ -150,7 +150,7 @@ export async function askAdeptAi(
   const ctx: ToolExecutionContext = {
     circleId: context?.circleId || 'circle-1',
     elderId: context?.elderId || 'elder-dad',
-    elderName: context?.elderName || 'Arthur Davies',
+    elderName: context?.elderName || 'Elder',
     role: context?.role || 'elder',
     doctorName: context?.doctorName || 'Dr. Evelyn Vance',
     medications: context?.medications || [
@@ -412,7 +412,7 @@ function computeClinicalAnswer(
     const answer =
       language === 'hi'
         ? `हालिया स्वास्थ्य माप:\n• रक्तचाप (BP): ${bp?.reading || '126/82 mmHg'} (${bp?.rangeFlag || 'स्थिर'})\n• ब्लड शुगर: ${sugar?.reading || '108 mg/dL'} (${sugar?.rangeFlag || 'स्थिर'})\nसभी आंकड़े सामान्य सीमा में हैं। (वाइटल्स लॉग से)`
-        : `Recent health readings for ${ctx.elderName}:\n• Blood Pressure: ${bp?.reading || '126/82 mmHg'} (${bp?.rangeFlag || 'Normal resting range'})\n• Blood Sugar: ${sugar?.reading || '108 mg/dL'} (${sugar?.rangeFlag || 'Steady fasting'})\nBoth are in Arthur's expected resting range. (From vitals log, ${bp?.loggedAt || 'Today'})`;
+        : `Recent health readings for ${ctx.elderName}:\n• Blood Pressure: ${bp?.reading || '126/82 mmHg'} (${bp?.rangeFlag || 'Normal resting range'})\n• Blood Sugar: ${sugar?.reading || '108 mg/dL'} (${sugar?.rangeFlag || 'Steady fasting'})\nBoth are in ${ctx.elderName.split(' ')[0]}'s expected resting range. (From vitals log, ${bp?.loggedAt || 'Today'})`;
 
     return wrap(
       answer,
