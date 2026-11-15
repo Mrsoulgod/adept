@@ -1,0 +1,19 @@
+{
+  "name": "Adept — Elderly Care & Medication Platform",
+  "short_name": "Adept",
+  "description": "Calm, accessible elderly care & medication schedule platform. One screen, one question, one big button.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fcfbfa",
+  "theme_color": "#064e3b",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

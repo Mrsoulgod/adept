@@ -7,6 +7,17 @@
     <title>Adept — Elderly Care & Medication Platform</title>
     <meta name="description" content="Adept: an elderly care & medication platform designed with the elder at the centre of every decision. One screen = one question = one big button." />
     
+    <script>
+      // Single Page Apps for GitHub Pages
+      // If served from repository root on github.io, automatically route to /docs/ where production assets reside
+      if (window.location.hostname.endsWith('github.io')) {
+        var p = window.location.pathname.replace(/\/+$/, '');
+        if (!p.endsWith('/docs') && !p.endsWith('/dist')) {
+          window.location.replace(p + '/docs/' + window.location.search + window.location.hash);
+        }
+      }
+    </script>
+    
     <!-- PWA Primary Color -->
     <meta name="theme-color" content="#064e3b" />
     <meta name="color-scheme" content="light" />
