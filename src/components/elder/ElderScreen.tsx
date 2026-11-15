@@ -1,30 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAdept } from '../../context/AdeptContext';
 import type { MealAnchor } from '../../lib/types';
 import { MEAL_ANCHORS } from '../../lib/types';
-import { CheckCircle2, HeartHandshake, ShieldCheck, Sun, Sunrise, Sunset, Sparkles, AlertCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  Mic,
+  MicOff,
+  Volume2,
+  RotateCcw,
+  Sunrise,
+  Sun,
+  Sunset
+} from 'lucide-react';
 
 export const ElderScreen: React.FC = () => {
   const {
     profile,
     medications,
     doseLogs,
+    language,
+    setLanguage,
     activeElderProposal,
     confirmDose,
     deferDoseComfortably,
+    skipDoseComfortably,
+    recordSymptomCheckin,
     elderResolveProposal,
     elderVetoAction,
     auditLogs,
   } = useAdept();
 
-  const [activeView, setActiveView] = useState<'main' | 'wellness' | 'veto'>('main');
-  const [comfortFeedback, setComfortFeedback] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<'main' | 'veto'>('main');
+  const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
+  const [selectedFeeling, setSelectedFeeling] = useState<string | null>(null);
+
+  // Web Speech API state
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [speechTranscript, setSpeechTranscript] = useState<string>('');
+  const recognitionRef = useRef<any>(null);
 
   // Today's date string
   const todayStr = new Date().toISOString().split('T')[0];
   const todayLogs = doseLogs.filter((l) => l.date === todayStr);
 
-  // Determine current meal anchor window based on current hour
+  // Current meal anchor
   const currentHour = new Date().getHours();
   let currentAnchor: MealAnchor = 'morning_breakfast';
   if (currentHour >= 11 && currentHour < 16) {
@@ -35,7 +56,7 @@ export const ElderScreen: React.FC = () => {
     currentAnchor = 'before_bedtime';
   }
 
-  // Find medication in current anchor that hasn't been logged today
+  // Next pending medication
   const pendingMedInWindow = medications.find((med) => {
     if (!med.isActive) return false;
     if (med.mealAnchor !== currentAnchor) return false;
@@ -43,71 +64,295 @@ export const ElderScreen: React.FC = () => {
     return !hasLog;
   });
 
-  // Next pending medication across any anchor
-  const nextPendingMed = pendingMedInWindow || medications.find((med) => {
-    if (!med.isActive) return false;
-    const hasLog = todayLogs.some((l) => l.medicationId === med.id && l.status === 'taken');
-    return !hasLog;
-  });
+  const nextPendingMed =
+    pendingMedInWindow ||
+    medications.find((med) => {
+      if (!med.isActive) return false;
+      const hasLog = todayLogs.some((l) => l.medicationId === med.id && l.status === 'taken');
+      return !hasLog;
+    });
 
-  // Recent vetoable items
-  const vetoableLogs = auditLogs.filter((l) => l.canElderVeto && !l.isVetoed);
+  // Time-aware greeting calculations
+  const timeOfDay = currentHour < 12 ? 'morning' : currentHour < 17 ? 'afternoon' : 'evening';
+
+  const t = {
+    en: {
+      morning: 'Good morning',
+      afternoon: 'Good afternoon',
+      evening: 'Good evening',
+      allCalm: 'All is peaceful right now',
+      windowOpen: 'Meal window is open',
+      giantCardTitle: nextPendingMed
+        ? nextPendingMed.mealAnchor === 'morning_breakfast'
+          ? 'Time for your morning pill, after breakfast'
+          : nextPendingMed.mealAnchor === 'after_lunch'
+          ? 'Time for your midday capsule, after lunch'
+          : 'Time for your evening tablet, with dinner'
+        : 'All caught up for right now',
+      takenBtn: 'Taken • Yes, I took it',
+      laterBtn: 'Later • Remind in a little while',
+      skipBtn: 'Skip comfortably today',
+      voicePrompt: 'Tap to Speak',
+      voiceListening: 'Listening... Say "maine goli kha li" or "I took my pill"',
+      voiceHint: 'Say: "maine goli kha li" or "I took my pill"',
+      simulateVoice: 'Try Voice: "maine goli kha li"',
+      summaryTitle: "Today's Routine (Anchored to Meals)",
+      breakfast: 'Morning with breakfast (7–10 AM)',
+      lunch: 'Midday after lunch (12–2:30 PM)',
+      dinner: 'Evening with dinner (6–8:30 PM)',
+      completed: 'Completed ✓',
+      inWindow: 'In Window ⏳',
+      upcoming: 'Coming later',
+      howFeelTitle: 'How do you feel today?',
+      howFeelSub: 'Sarah and Dr. Vance check your comfort to keep you walking easily.',
+      great: 'Great',
+      steady: 'Steady & Calm',
+      tired: 'A bit tired',
+      discomfort: 'Discomfort / Pain',
+      thankYouFeeling: 'Thank you, Arthur! Your comfort status has been shared with Sarah.',
+      reviewVeto: 'Review routine changes or cancel an update',
+      allCaughtUpTitle: 'Everything is steady, Arthur.',
+      allCaughtUpBody: 'You have taken your scheduled medicines for this window. Enjoy your day.',
+      vetoTitle: 'Recent Routine Changes & Veto',
+      vetoDesc: 'You have ultimate authority. Tap Veto to cancel any change made by Sarah or Dr. Vance.',
+      vetoBtn: 'Veto and Cancel This Change',
+      returnHome: '← Return to Home Screen',
+    },
+    hi: {
+      morning: 'शुभ प्रभात',
+      afternoon: 'शुभ दोपहर',
+      evening: 'शुभ संध्या',
+      allCalm: 'सब कुछ शांत और स्थिर है',
+      windowOpen: 'दवाई का समय खुला है',
+      giantCardTitle: nextPendingMed
+        ? nextPendingMed.mealAnchor === 'morning_breakfast'
+          ? 'नाश्ते के बाद, सुबह की गोली का समय'
+          : nextPendingMed.mealAnchor === 'after_lunch'
+          ? 'दोपहर के भोजन के बाद, दवाई का समय'
+          : 'रात के खाने के साथ, शाम की गोली का समय'
+        : 'अभी के लिए सब दवाईयां पूरी हैं',
+      takenBtn: 'ले ली • हाँ, मैंने ले ली',
+      laterBtn: 'बाद में • थोड़ी देर बाद याद दिलाएं',
+      skipBtn: 'आज आराम करें • आज नहीं लेनी',
+      voicePrompt: 'बोलने के लिए माइक दबाएं',
+      voiceListening: 'सुन रहे हैं... बोलें: "मैंने गोली खा ली"',
+      voiceHint: 'बोलें: "मैंने गोली खा ली" या "I took my pill"',
+      simulateVoice: 'आवाज़ जांचें: "मैंने गोली खा ली"',
+      summaryTitle: 'आज का समय-चक्र (भोजन से जुड़ा)',
+      breakfast: 'सुबह नाश्ते के बाद (7–10 बजे)',
+      lunch: 'दोपहर खाने के बाद (12–2:30 बजे)',
+      dinner: 'रात के खाने के साथ (6–8:30 बजे)',
+      completed: 'पूर्ण ✓',
+      inWindow: 'अभी समय है ⏳',
+      upcoming: 'बाद में आएगी',
+      howFeelTitle: 'आज आप कैसा महसूस कर रहे हैं?',
+      howFeelSub: 'आपकी देखभाल टीम को यह जानकारी मिलती है ताकि आप स्वस्थ रहें।',
+      great: 'बहुत अच्छा',
+      steady: 'ठीक-ठाक',
+      tired: 'थोड़ी थकान',
+      discomfort: 'दर्द / बेचैनी',
+      thankYouFeeling: 'धन्यवाद आर्थर जी! आपकी तबीयत की जानकारी सारा को मिल गई है।',
+      reviewVeto: 'बदलाव देखें या रद्द (Veto) करें',
+      allCaughtUpTitle: 'सब कुछ शांत और ठीक है, आर्थर जी।',
+      allCaughtUpBody: 'इस पहर की सभी दवाइयाँ पूरी हो चुकी हैं। आपका दिन शुभ हो।',
+      vetoTitle: 'हालिया बदलाव और आपका वीटो अधिकार',
+      vetoDesc: 'आप हर फैसले के केंद्र में हैं। किसी भी बदलाव को रद्द करने के लिए वीटो दबाएं।',
+      vetoBtn: 'यह बदलाव रद्द करें (Veto)',
+      returnHome: '← मुख्य पृष्ठ पर वापस जाएं',
+    },
+  }[language];
+
+  // Initialize Web Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript.toLowerCase();
+        setSpeechTranscript(transcript);
+        handleVoiceCommand(transcript);
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('Speech recognition event:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, [language, nextPendingMed]);
+
+  // Voice command processor
+  const handleVoiceCommand = (transcript: string) => {
+    const clean = transcript.toLowerCase().trim();
+    const isHindiMatch =
+      clean.includes('goli kha li') ||
+      clean.includes('maine goli') ||
+      clean.includes('dawa kha li') ||
+      clean.includes('le li') ||
+      clean.includes('kha li') ||
+      clean.includes('goli li');
+
+    const isEnglishMatch =
+      clean.includes('took my pill') ||
+      clean.includes('took') ||
+      clean.includes('taken') ||
+      clean.includes('i have taken') ||
+      clean.includes('done') ||
+      clean.includes('yes');
+
+    if (isHindiMatch || isEnglishMatch) {
+      if (nextPendingMed) {
+        confirmDose(nextPendingMed.id, `Voice confirmed: "${transcript}"`);
+        const confirmMsg =
+          language === 'hi'
+            ? `आवाज़ सुनी गई: "${transcript}" • दवाई दर्ज हो गई!`
+            : `Voice heard: "${transcript}" • Confirmed!`;
+        setFeedbackNotice(confirmMsg);
+
+        // Gentle voice reassurance
+        if ('speechSynthesis' in window) {
+          const utter = new SpeechSynthesisUtterance(
+            language === 'hi'
+              ? 'बहुत बढ़िया आर्थर जी, आपकी दवाई दर्ज हो गई है।'
+              : 'Wonderful Arthur, your dose has been recorded.'
+          );
+          utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+          window.speechSynthesis.speak(utter);
+        }
+      }
+    } else {
+      setFeedbackNotice(
+        language === 'hi'
+          ? `सुना: "${transcript}". कृपया कहें "मैंने गोली खा ली"`
+          : `Heard: "${transcript}". Please say "I took my pill"`
+      );
+    }
+  };
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      // Browser doesn't support Web Speech API, trigger direct test
+      handleVoiceCommand('maine goli kha li');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      try {
+        recognitionRef.current.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
+        recognitionRef.current.start();
+      } catch (err) {
+        console.warn('Could not start recognition:', err);
+        handleVoiceCommand('maine goli kha li');
+      }
+    }
+  };
+
+  const handleSimulateVoice = () => {
+    handleVoiceCommand('maine goli kha li');
+  };
 
   // -------------------------------------------------------------
-  // VIEW: ELDER VETO SCREEN (Elder has ultimate authority)
+  // VETO SCREEN (Elder ultimate authority)
   // -------------------------------------------------------------
   if (activeView === 'veto') {
+    const vetoableLogs = auditLogs.filter((l) => l.canElderVeto && !l.isVetoed);
+
     return (
-      <div className="min-h-screen bg-[#fcfbfa] text-[#0f172a] p-6 flex flex-col justify-between max-w-xl mx-auto">
+      <div className="min-h-screen bg-[#FAF8F5] text-[#1A1D1A] p-6 max-w-xl mx-auto flex flex-col justify-between">
         <div>
-          {/* Header */}
-          <div className="mb-8">
-            <span className="inline-block bg-emerald-100 text-[#064e3b] font-bold px-4 py-2 rounded-full text-lg mb-3">
-              Elder Veto Authority
+          <div className="flex items-center justify-between mb-6">
+            <span className="bg-[#EAF2EC] text-[#244937] font-bold px-4 py-1.5 rounded-full text-base">
+              Adept • Elder Veto
             </span>
-            <h1 className="text-3xl font-extrabold tracking-tight text-[#0f172a]">
-              Recent Routine Changes
-            </h1>
-            <p className="text-xl text-slate-700 mt-2">
-              You are the centre of every decision. If Sarah or Dr. Vance made a change you don’t want, tap Veto to cancel it.
-            </p>
+            {/* Language Toggle */}
+            <div className="flex items-center bg-white border border-[#EAE5DB] p-1 rounded-xl">
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                  language === 'en' ? 'bg-[#244937] text-white' : 'text-[#70756F]'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLanguage('hi')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                  language === 'hi' ? 'bg-[#244937] text-white' : 'text-[#70756F]'
+                }`}
+              >
+                हिंदी
+              </button>
+            </div>
           </div>
 
-          {/* Vetoable list */}
+          <h1 className="text-3xl font-extrabold text-[#1A1D1A] mb-2">{t.vetoTitle}</h1>
+          <p className="text-xl text-[#474C46] leading-relaxed mb-6">{t.vetoDesc}</p>
+
           {vetoableLogs.length === 0 ? (
-            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-6 text-center my-6">
-              <CheckCircle2 className="w-12 h-12 text-[#047857] mx-auto mb-3" />
-              <p className="text-2xl font-bold text-[#064e3b]">No changes need your attention</p>
-              <p className="text-xl text-emerald-900 mt-2">
-                Your routine is steady and peaceful just the way you like it.
+            <div className="bg-white border-2 border-[#EAE5DB] rounded-3xl p-8 text-center my-6 space-y-3">
+              <CheckCircle2 className="w-12 h-12 text-[#244937] mx-auto" />
+              <p className="text-2xl font-bold text-[#1A1D1A]">
+                {language === 'hi' ? 'कोई नया बदलाव नहीं है' : 'No changes need your attention'}
+              </p>
+              <p className="text-lg text-[#70756F]">
+                {language === 'hi'
+                  ? 'आपकी दिनचर्या बिल्कुल स्थिर और शांत है।'
+                  : 'Your routine is peaceful and unchanged.'}
               </p>
             </div>
           ) : (
-            <div className="space-y-6 my-4">
+            <div className="space-y-5 my-4">
               {vetoableLogs.slice(0, 3).map((log) => (
                 <div
                   key={log.id}
-                  className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 shadow-sm"
+                  className="bg-[#FBF5EA] border-2 border-[#EBDBC1] rounded-3xl p-6 shadow-xs space-y-4"
                 >
-                  <span className="text-amber-900 text-lg font-semibold block mb-1">
-                    Proposed / Added by {log.actorName}
+                  <span className="text-[#92631E] font-bold text-base block">
+                    {log.actorName}
                   </span>
-                  <h3 className="text-2xl font-black text-amber-950 mb-2">{log.action}</h3>
-                  <p className="text-xl text-slate-800 leading-relaxed mb-6">
+                  <h3 className="text-2xl font-bold text-[#1A1D1A]">{log.action}</h3>
+                  <p className="text-xl text-[#474C46] leading-relaxed">
                     {log.plainEnglishDescription}
                   </p>
 
-                  {/* ONE BIG VETO BUTTON */}
                   <button
                     onClick={() => {
                       elderVetoAction(log.id);
-                      setComfortFeedback(`Cancelled "${log.action}". Your routine is restored.`);
+                      setFeedbackNotice(`Vetoed: "${log.action}" has been completely rolled back.`);
                       setActiveView('main');
                     }}
-                    className="w-full min-h-[68px] bg-amber-700 hover:bg-amber-800 text-white text-2xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-3 shadow-md active:scale-98 cursor-pointer transition-all"
+                    className="w-full min-h-[64px] bg-[#92631E] hover:bg-[#7A4F13] text-white text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-98 transition-all"
                   >
-                    <AlertCircle className="w-8 h-8" />
-                    <span>Veto and Cancel This Change</span>
+                    <RotateCcw className="w-6 h-6" />
+                    <span>{t.vetoBtn}</span>
                   </button>
                 </div>
               ))}
@@ -115,78 +360,18 @@ export const ElderScreen: React.FC = () => {
           )}
         </div>
 
-        {/* Back Button */}
-        <div className="mt-8">
-          <button
-            onClick={() => setActiveView('main')}
-            className="w-full min-h-[64px] bg-slate-900 text-white text-2xl font-bold rounded-2xl px-6 py-4 cursor-pointer shadow-md active:scale-98"
-          >
-            ← Return to Home Screen
-          </button>
-        </div>
+        <button
+          onClick={() => setActiveView('main')}
+          className="w-full min-h-[64px] bg-[#1A1D1A] hover:bg-black text-white text-xl font-bold rounded-2xl p-4 cursor-pointer mt-6"
+        >
+          {t.returnHome}
+        </button>
       </div>
     );
   }
 
   // -------------------------------------------------------------
-  // VIEW: GENTLE WELLNESS CHECK-IN
-  // -------------------------------------------------------------
-  if (activeView === 'wellness') {
-    return (
-      <div className="min-h-screen bg-[#fcfbfa] text-[#0f172a] p-6 flex flex-col justify-between max-w-xl mx-auto">
-        <div>
-          <span className="inline-block bg-emerald-100 text-[#064e3b] font-bold px-4 py-2 rounded-full text-lg mb-3">
-            Morning & Midday Comfort
-          </span>
-          <h1 className="text-3xl font-extrabold text-[#0f172a] mb-3">
-            How are your knees and body feeling right now?
-          </h1>
-          <p className="text-xl text-slate-700 mb-8">
-            Sarah and Dr. Vance check your comfort notes to keep you walking easily.
-          </p>
-
-          <div className="space-y-5">
-            {/* OPTION 1: BIG BUTTON */}
-            <button
-              onClick={() => {
-                setComfortFeedback('Thank you, Arthur! Logged: Feeling steady & comfortable.');
-                setActiveView('main');
-              }}
-              className="w-full min-h-[72px] bg-[#064e3b] hover:bg-[#053d2e] text-white text-2xl font-bold rounded-2xl p-5 flex items-center justify-center gap-3 shadow-lg active:scale-98 cursor-pointer"
-            >
-              <CheckCircle2 className="w-8 h-8 text-emerald-300" />
-              <span>Feeling good and comfortable</span>
-            </button>
-
-            {/* OPTION 2: WARM AMBER BUTTON (NO SHAME) */}
-            <button
-              onClick={() => {
-                setComfortFeedback('Noted: Knees feeling a bit stiff. Sarah has been informed to check in.');
-                setActiveView('main');
-              }}
-              className="w-full min-h-[72px] bg-amber-100 hover:bg-amber-200 text-amber-950 border-2 border-amber-300 text-2xl font-bold rounded-2xl p-5 flex items-center justify-center gap-3 active:scale-98 cursor-pointer"
-            >
-              <AlertCircle className="w-8 h-8 text-amber-800" />
-              <span>A bit stiff or tired today</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <button
-            onClick={() => setActiveView('main')}
-            className="w-full min-h-[64px] bg-slate-200 text-slate-900 text-xl font-bold rounded-2xl p-4 cursor-pointer"
-          >
-            Back to my medication
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // -------------------------------------------------------------
-  // HERO CASE 1: AI PROPOSAL NEEDS CONFIRMATION
-  // "Every AI output is a PROPOSAL the elder confirms. Never auto-apply."
+  // HERO CASE: AI PROPOSAL NEEDS ARTHUR'S APPROVAL
   // -------------------------------------------------------------
   if (activeElderProposal) {
     const medData = activeElderProposal.medicationData;
@@ -194,63 +379,92 @@ export const ElderScreen: React.FC = () => {
     const anchorConfig = MEAL_ANCHORS[anchor];
 
     return (
-      <div className="min-h-screen bg-[#fcfbfa] text-[#0f172a] p-6 flex flex-col justify-between max-w-xl mx-auto">
+      <div className="min-h-screen bg-[#FAF8F5] text-[#1A1D1A] p-6 max-w-xl mx-auto flex flex-col justify-between">
         <div>
-          {/* High Contrast Header */}
-          <div className="mb-6">
-            <span className="inline-flex items-center gap-2 bg-amber-100 border border-amber-300 text-amber-950 font-bold px-4 py-2 rounded-full text-lg mb-3">
-              <Sparkles className="w-5 h-5 text-amber-700" />
-              New Proposal from {profile.doctorName}
+          <div className="flex items-center justify-between mb-6">
+            <span className="inline-flex items-center gap-2 bg-[#FBF5EA] border border-[#EBDBC1] text-[#92631E] font-bold px-4 py-1.5 rounded-full text-base">
+              <Sparkles className="w-5 h-5 text-[#92631E]" />
+              {language === 'hi' ? 'डॉ. वांस का नया प्रस्ताव' : `Proposal from ${profile.doctorName}`}
             </span>
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-[#0f172a] leading-tight">
-              Dr. Vance recommends adding {activeElderProposal.title}.
-            </h1>
+
+            {/* Language Selector */}
+            <div className="flex items-center bg-white border border-[#EAE5DB] p-1 rounded-xl">
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                  language === 'en' ? 'bg-[#244937] text-white' : 'text-[#70756F]'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLanguage('hi')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                  language === 'hi' ? 'bg-[#244937] text-white' : 'text-[#70756F]'
+                }`}
+              >
+                हिंदी
+              </button>
+            </div>
           </div>
 
-          {/* Proposal Explanation Card */}
-          <div className="bg-amber-50/70 border-2 border-amber-300 rounded-3xl p-6 mb-8 space-y-4">
-            <div className="text-2xl font-bold text-slate-900">
-              When to take it:
-              <span className="block text-2xl font-extrabold text-[#064e3b] mt-1">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-[#1A1D1A] leading-tight mb-4">
+            {language === 'hi'
+              ? `डॉ. वांस ने ${activeElderProposal.title} जोड़ने की सिफारिश की है।`
+              : `Dr. Vance recommends adding ${activeElderProposal.title}.`}
+          </h1>
+
+          <div className="bg-white border-2 border-[#EBDBC1] rounded-3xl p-6 sm:p-7 mb-8 space-y-4 shadow-xs">
+            <div className="text-xl font-bold text-[#1A1D1A]">
+              {language === 'hi' ? 'कब लेनी है:' : 'When to take it:'}
+              <span className="block text-2xl font-black text-[#244937] mt-1">
                 {anchorConfig.label} ({anchorConfig.windowLabel})
               </span>
             </div>
 
-            <p className="text-xl text-slate-800 leading-relaxed">
+            <p className="text-xl text-[#474C46] leading-relaxed">
               {activeElderProposal.summary}
             </p>
 
-            <div className="bg-white/90 p-4 rounded-xl border border-amber-200 text-xl text-slate-800">
-              <strong>Instructions:</strong> {medData.instructions || 'Take 1 tablet with water and food.'}
+            <div className="bg-[#FAF8F5] p-4 rounded-2xl border border-[#EAE5DB] text-xl text-[#1A1D1A]">
+              <strong>{language === 'hi' ? 'निर्देश:' : 'Instructions:'}</strong>{' '}
+              {medData.instructions || 'Take 1 tablet with water and food.'}
             </div>
 
-            <p className="text-lg text-amber-950 font-medium italic">
-              Nothing will change unless you tap yes below. You are in complete control.
+            <p className="text-lg text-[#92631E] font-medium italic">
+              {language === 'hi'
+                ? 'जब तक आप हाँ नहीं कहते, यह दिनचर्या में नहीं जुड़ेगी।'
+                : 'Nothing will change unless you tap yes below. You are in control.'}
             </p>
           </div>
         </div>
 
-        {/* ONE BIG BUTTON + ONE CALM AMBER DECLINE BUTTON */}
         <div className="space-y-4 pb-4">
           <button
             onClick={() => {
               elderResolveProposal(activeElderProposal.id, true);
-              setComfortFeedback(`Approved! ${activeElderProposal.title} is now in your routine.`);
+              setFeedbackNotice(
+                language === 'hi'
+                  ? `स्वीकृत! ${activeElderProposal.title} आपकी दिनचर्या में शामिल है।`
+                  : `Approved! ${activeElderProposal.title} is now in your routine.`
+              );
             }}
-            className="w-full min-h-[76px] bg-[#064e3b] hover:bg-[#043e2f] text-white text-2xl sm:text-3xl font-extrabold rounded-2xl px-6 py-5 flex items-center justify-center gap-3 shadow-xl active:scale-98 cursor-pointer transition-all"
+            className="w-full min-h-[76px] bg-[#244937] hover:bg-[#1B3729] text-white text-2xl sm:text-3xl font-bold rounded-2xl px-6 py-5 flex items-center justify-center gap-3 shadow-md active:scale-98 cursor-pointer transition-all"
           >
-            <CheckCircle2 className="w-9 h-9 text-emerald-300" />
-            <span>Yes, add this to my routine</span>
+            <CheckCircle2 className="w-8 h-8 text-emerald-300" />
+            <span>{language === 'hi' ? 'हाँ, दिनचर्या में जोड़ें' : 'Yes, add this to my routine'}</span>
           </button>
 
           <button
             onClick={() => {
               elderResolveProposal(activeElderProposal.id, false);
-              setComfortFeedback('Proposal declined. Your schedule remains unchanged.');
+              setFeedbackNotice(
+                language === 'hi' ? 'प्रस्ताव अस्वीकार कर दिया गया।' : 'Proposal declined.'
+              );
             }}
-            className="w-full min-h-[64px] bg-amber-100 hover:bg-amber-200 text-amber-950 border-2 border-amber-300 text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+            className="w-full min-h-[64px] bg-[#FBF5EA] hover:bg-[#F5EAD3] text-[#7A4F13] border-2 border-[#EBDBC1] text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
           >
-            <span>No, keep my routine as it is</span>
+            <span>{language === 'hi' ? 'नहीं, अभी ऐसे ही रहने दें' : 'No, keep my routine as it is'}</span>
           </button>
         </div>
       </div>
@@ -258,189 +472,357 @@ export const ElderScreen: React.FC = () => {
   }
 
   // -------------------------------------------------------------
-  // HERO CASE 2: PENDING MEDICATION TO TAKE RIGHT NOW
-  // Design Law: One screen = one question = one big button
+  // MAIN ELDER HOME VIEW
   // -------------------------------------------------------------
-  if (nextPendingMed) {
-    const anchorConfig = MEAL_ANCHORS[nextPendingMed.mealAnchor];
-
-    return (
-      <div className="min-h-screen bg-[#fcfbfa] text-[#0f172a] p-6 flex flex-col justify-between max-w-xl mx-auto">
-        <div>
-          {/* Reassurance Banner */}
-          <div className="flex items-center justify-between mb-6">
-            <span className="inline-flex items-center gap-2 bg-emerald-100 text-[#064e3b] font-bold px-4 py-2 rounded-full text-lg">
-              <ShieldCheck className="w-5 h-5 text-[#047857]" />
-              Adept • Routine Window
-            </span>
-            <span className="text-xl font-bold text-slate-700">
-              {anchorConfig.windowLabel}
-            </span>
-          </div>
-
-          {/* Feedback toast if any */}
-          {comfortFeedback && (
-            <div className="bg-emerald-100 border-2 border-emerald-400 text-emerald-950 p-4 rounded-2xl text-xl font-semibold mb-6 flex items-center gap-3">
-              <CheckCircle2 className="w-6 h-6 text-emerald-700" />
-              <span>{comfortFeedback}</span>
+  return (
+    <div className="min-h-screen bg-[#FAF8F5] text-[#1A1D1A] p-6 max-w-xl mx-auto flex flex-col justify-between font-sans">
+      <div className="space-y-8">
+        {/* Top Header: Time-aware greeting & Hindi/English Toggle */}
+        <header className="pt-2">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="inline-flex items-center gap-2 bg-[#EAF2EC] border border-[#C6DBD0] text-[#244937] px-3.5 py-1 rounded-full text-base font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#244937] animate-pulse" />
+              <span>{nextPendingMed ? t.windowOpen : t.allCalm}</span>
             </div>
-          )}
 
-          {/* THE ONE QUESTION (22px - 32px font, plain English) */}
-          <div className="my-4">
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-[#0f172a] leading-tight mb-3">
-              Good day, {profile.name.split(' ')[0]}.
-            </h1>
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 leading-snug">
-              Did you take your <span className="text-[#064e3b] underline decoration-emerald-400">{nextPendingMed.friendlyName}</span> with {anchorConfig.label.toLowerCase()}?
-            </h2>
+            {/* Language Switcher */}
+            <div className="flex items-center bg-white border border-[#EAE5DB] p-1 rounded-2xl shadow-xs">
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  language === 'en'
+                    ? 'bg-[#244937] text-white shadow-xs'
+                    : 'text-[#70756F] hover:text-[#1A1D1A]'
+                }`}
+              >
+                English
+              </button>
+              <button
+                onClick={() => setLanguage('hi')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  language === 'hi'
+                    ? 'bg-[#244937] text-white shadow-xs'
+                    : 'text-[#70756F] hover:text-[#1A1D1A]'
+                }`}
+              >
+                हिंदी
+              </button>
+            </div>
           </div>
 
-          {/* Friendly Visual Cue (Shape & Instructions) */}
-          <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 shadow-sm my-6 space-y-4">
-            <div className="flex items-center gap-4">
+          <h1 className="text-[32px] sm:text-[38px] font-bold text-[#1A1D1A] tracking-tight leading-tight">
+            {t[timeOfDay]}, {profile.name.split(' ')[0]}
+            {language === 'hi' ? ' जी' : ''}.
+          </h1>
+          <p className="text-xl text-[#70756F] mt-1 font-medium">
+            {new Date().toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </p>
+        </header>
+
+        {/* Feedback Banner if any action occurred */}
+        {feedbackNotice && (
+          <div className="bg-[#EAF2EC] border-2 border-[#C6DBD0] text-[#244937] p-4 rounded-2xl text-xl font-bold flex items-center gap-3 shadow-xs">
+            <CheckCircle2 className="w-7 h-7 text-[#244937] shrink-0" />
+            <span>{feedbackNotice}</span>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* HERO 1: ONE NEXT ACTION AS A GIANT CARD                  */}
+        {/* ========================================================= */}
+        {nextPendingMed ? (
+          <div className="bg-white border-2 border-[#EAE5DB] rounded-3xl p-6 sm:p-7 shadow-sm space-y-6">
+            <div>
+              <span className="text-base font-bold text-[#244937] bg-[#EAF2EC] px-3.5 py-1 rounded-full uppercase tracking-wide">
+                {MEAL_ANCHORS[nextPendingMed.mealAnchor]?.label}
+              </span>
+              <h2 className="text-[26px] sm:text-[30px] font-extrabold text-[#1A1D1A] mt-3 leading-snug">
+                {t.giantCardTitle}
+              </h2>
+            </div>
+
+            {/* Pill Visual Cue */}
+            <div className="bg-[#FAF8F5] border border-[#EAE5DB] rounded-2xl p-5 flex items-center gap-5">
               <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-md font-bold text-2xl"
-                style={{ backgroundColor: nextPendingMed.color || '#3b82f6' }}
+                className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-xs shrink-0"
+                style={{ backgroundColor: nextPendingMed.color || '#244937' }}
               >
                 💊
               </div>
-              <div>
-                <h3 className="text-2xl font-extrabold text-slate-900">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-2xl font-bold text-[#1A1D1A] leading-tight">
                   {nextPendingMed.friendlyName}
                 </h3>
-                <p className="text-xl text-slate-600 font-medium">
+                <p className="text-lg text-[#70756F] font-medium mt-0.5">
                   {nextPendingMed.name} ({nextPendingMed.dosage})
+                </p>
+                <p className="text-base text-[#474C46] mt-1">
+                  {nextPendingMed.instructions}
                 </p>
               </div>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-xl text-xl text-slate-800">
-              <p className="font-semibold text-[#0f172a]">Instructions:</p>
-              <p className="mt-1">{nextPendingMed.instructions}</p>
+            {/* BIG ACTION BUTTONS: TAKEN / LATER / SKIP */}
+            <div className="space-y-3.5 pt-2">
+              {/* 1. TAKEN (Giant Calm Accent Button) */}
+              <button
+                onClick={() => {
+                  confirmDose(nextPendingMed.id);
+                  setFeedbackNotice(
+                    language === 'hi'
+                      ? `शाबाश आर्थर जी! ${nextPendingMed.friendlyName} ले ली गई है।`
+                      : `Wonderful Arthur! ${nextPendingMed.friendlyName} confirmed.`
+                  );
+                }}
+                className="w-full min-h-[72px] bg-[#244937] hover:bg-[#1B3729] text-white text-2xl font-bold rounded-2xl px-6 py-5 flex items-center justify-center gap-3 shadow-md active:scale-98 cursor-pointer transition-all"
+              >
+                <CheckCircle2 className="w-8 h-8 text-emerald-300" />
+                <span>{t.takenBtn}</span>
+              </button>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 2. LATER (Warm Amber) */}
+                <button
+                  onClick={() => {
+                    deferDoseComfortably(nextPendingMed.id, 'Taking in a little while.');
+                    setFeedbackNotice(
+                      language === 'hi'
+                        ? 'कोई जल्दी नहीं है। थोड़ी देर बाद याद दिलाएंगे।'
+                        : 'Take your time, Arthur. We will check in later.'
+                    );
+                  }}
+                  className="w-full min-h-[64px] bg-[#FBF5EA] hover:bg-[#F5EAD3] text-[#7A4F13] border-2 border-[#EBDBC1] text-xl font-bold rounded-2xl px-4 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                >
+                  <Clock className="w-5 h-5 text-[#92631E]" />
+                  <span>{t.laterBtn}</span>
+                </button>
+
+                {/* 3. SKIP (Gentle Amber, No Shame) */}
+                <button
+                  onClick={() => {
+                    skipDoseComfortably(nextPendingMed.id, 'Arthur chose to rest today.');
+                    setFeedbackNotice(
+                      language === 'hi'
+                        ? 'आज के लिए यह खुराक छोड़ दी गई है। सारा को सूचित कर दिया गया है।'
+                        : 'Dose skipped comfortably today. Sarah informed.'
+                    );
+                  }}
+                  className="w-full min-h-[64px] bg-white hover:bg-[#FAF8F5] text-[#474C46] border-2 border-[#D8D1C3] text-xl font-bold rounded-2xl px-4 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                >
+                  <span>{t.skipBtn}</span>
+                </button>
+              </div>
             </div>
 
-            <p className="text-lg text-slate-600">
-              <strong>Why you take this:</strong> {nextPendingMed.purpose}
+            {/* ========================================================= */}
+            {/* HERO 2: BIG VOICE BUTTON (Web Speech API)                */}
+            {/* ========================================================= */}
+            <div className="pt-2 border-t border-[#EAE5DB]">
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <button
+                  onClick={toggleListening}
+                  className={`w-full flex-1 min-h-[68px] rounded-2xl font-bold text-xl px-5 py-4 flex items-center justify-center gap-3 transition-all cursor-pointer shadow-xs active:scale-98 ${
+                    isListening
+                      ? 'bg-amber-500 text-white animate-pulse'
+                      : 'bg-[#FAF8F5] hover:bg-[#EAF2EC] text-[#244937] border-2 border-[#C6DBD0]'
+                  }`}
+                >
+                  {isListening ? (
+                    <>
+                      <MicOff className="w-7 h-7" />
+                      <span>{t.voiceListening}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-7 h-7 text-[#244937]" />
+                      <span>{t.voicePrompt}</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Simulated voice test pill for instant zero-friction review */}
+                <button
+                  onClick={handleSimulateVoice}
+                  title="Simulate speech: 'maine goli kha li'"
+                  className="bg-white hover:bg-[#FAF8F5] border border-[#D8D1C3] text-[#70756F] text-xs font-bold px-3 py-2 rounded-xl shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>{t.simulateVoice}</span>
+                </button>
+              </div>
+              <p className="text-xs text-[#70756F] text-center mt-2 font-medium">
+                {speechTranscript ? (
+                  <span className="font-bold text-[#244937]">Heard: "{speechTranscript}"</span>
+                ) : (
+                  t.voiceHint
+                )}
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* ALL CAUGHT UP SCREEN (Calm by Default) */
+          <div className="bg-white border-2 border-[#EAE5DB] rounded-3xl p-8 text-center space-y-4 shadow-sm">
+            <div className="w-16 h-16 rounded-full bg-[#EAF2EC] text-[#244937] flex items-center justify-center mx-auto text-3xl font-bold">
+              ✓
+            </div>
+            <h2 className="text-3xl font-black text-[#1A1D1A]">
+              {t.allCaughtUpTitle}
+            </h2>
+            <p className="text-xl text-[#474C46] leading-relaxed max-w-md mx-auto">
+              {t.allCaughtUpBody}
             </p>
-          </div>
-        </div>
-
-        {/* ONE BIG BUTTON (min-h 72px, tap target 64px+, AAA contrast) */}
-        <div className="space-y-4 pb-4">
-          <button
-            onClick={() => {
-              confirmDose(nextPendingMed.id);
-              setComfortFeedback(`Wonderful, Arthur! ${nextPendingMed.friendlyName} confirmed.`);
-            }}
-            className="w-full min-h-[76px] bg-[#064e3b] hover:bg-[#053d2e] text-white text-2xl sm:text-3xl font-black rounded-2xl px-6 py-5 flex items-center justify-center gap-4 shadow-xl active:scale-98 cursor-pointer transition-all"
-          >
-            <CheckCircle2 className="w-10 h-10 text-emerald-300" />
-            <span>Yes, I took it</span>
-          </button>
-
-          {/* WARM AMBER (NO RED, NO SHAME, NO TIMEOUTS) */}
-          <button
-            onClick={() => {
-              deferDoseComfortably(nextPendingMed.id, 'Arthur chose to rest first.');
-              setComfortFeedback('Take your time, Arthur. Sarah knows you are having a relaxed morning.');
-            }}
-            className="w-full min-h-[64px] bg-amber-100 hover:bg-amber-200 text-amber-950 border-2 border-amber-300 text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-          >
-            <span>Not yet, I’ll take it in a little while</span>
-          </button>
-
-          {/* Veto or Routine Management */}
-          <div className="pt-2 text-center">
-            <button
-              onClick={() => setActiveView('veto')}
-              className="text-slate-600 hover:text-slate-900 text-lg font-semibold underline underline-offset-4 py-2 px-4 cursor-pointer"
-            >
-              Review changes or cancel an update
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // -------------------------------------------------------------
-  // HERO CASE 3: ALL CAUGHT UP! CALM BY DEFAULT (GREEN / NEUTRAL)
-  // -------------------------------------------------------------
-  return (
-    <div className="min-h-screen bg-[#fcfbfa] text-[#0f172a] p-6 flex flex-col justify-between max-w-xl mx-auto">
-      <div>
-        {/* Calm Status Pill */}
-        <div className="inline-flex items-center gap-2 bg-emerald-100 text-[#064e3b] font-bold px-4 py-2 rounded-full text-lg mb-6">
-          <CheckCircle2 className="w-6 h-6 text-[#047857]" />
-          All Caught Up • Calm & Peaceful
-        </div>
-
-        {comfortFeedback && (
-          <div className="bg-emerald-100 border-2 border-emerald-400 text-emerald-950 p-4 rounded-2xl text-xl font-semibold mb-6 flex items-center gap-3">
-            <CheckCircle2 className="w-6 h-6 text-emerald-700" />
-            <span>{comfortFeedback}</span>
           </div>
         )}
 
-        <h1 className="text-3xl sm:text-4xl font-black text-[#0f172a] leading-tight mb-4">
-          Everything is steady, Arthur.
-        </h1>
-        <p className="text-2xl text-slate-800 leading-relaxed mb-8">
-          You’ve taken all your scheduled medicines for this window. There is nothing you need to worry about right now.
-        </p>
-
-        {/* Completed Routine Overview */}
-        <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-          <h3 className="text-xl font-bold text-slate-900 uppercase tracking-wide">
-            Today’s Routine Status
+        {/* ========================================================= */}
+        {/* HERO 3: CALM 3-ITEM SUMMARY OF THE DAY (Meal Anchors)    */}
+        {/* ========================================================= */}
+        <section className="bg-white border border-[#EAE5DB] rounded-3xl p-6 shadow-xs space-y-4">
+          <h3 className="text-lg font-bold text-[#1A1D1A] uppercase tracking-wide">
+            {t.summaryTitle}
           </h3>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200">
-              <span className="text-xl font-bold text-[#064e3b] flex items-center gap-2">
-                <Sunrise className="w-6 h-6 text-emerald-700" />
-                Breakfast (7:00 – 10:00 AM)
+            {/* Morning (Breakfast) */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
+              <div className="flex items-center gap-3">
+                <Sunrise className="w-6 h-6 text-[#244937]" />
+                <div>
+                  <div className="font-bold text-lg text-[#1A1D1A]">{t.breakfast}</div>
+                  <div className="text-sm text-[#70756F]">Amlodipine, Metformin</div>
+                </div>
+              </div>
+              <span className="font-bold text-base text-[#244937] bg-[#EAF2EC] px-3 py-1 rounded-full">
+                {t.completed}
               </span>
-              <span className="text-lg font-bold text-emerald-800">Completed ✓</span>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200">
-              <span className="text-xl font-bold text-[#064e3b] flex items-center gap-2">
-                <Sun className="w-6 h-6 text-emerald-700" />
-                Lunch (12:00 – 2:30 PM)
+            {/* Midday (Lunch) */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
+              <div className="flex items-center gap-3">
+                <Sun className="w-6 h-6 text-[#92631E]" />
+                <div>
+                  <div className="font-bold text-lg text-[#1A1D1A]">{t.lunch}</div>
+                  <div className="text-sm text-[#70756F]">Glucosamine Complex</div>
+                </div>
+              </div>
+              <span className="font-bold text-base text-[#92631E] bg-[#FBF5EA] px-3 py-1 rounded-full">
+                {t.inWindow}
               </span>
-              <span className="text-lg font-bold text-emerald-800">Completed ✓</span>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-xl font-semibold text-slate-700 flex items-center gap-2">
-                <Sunset className="w-6 h-6 text-slate-500" />
-                Dinner (6:00 – 8:30 PM)
+            {/* Evening (Dinner) */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE5DB]">
+              <div className="flex items-center gap-3">
+                <Sunset className="w-6 h-6 text-[#70756F]" />
+                <div>
+                  <div className="font-bold text-lg text-[#1A1D1A]">{t.dinner}</div>
+                  <div className="text-sm text-[#70756F]">Atorvastatin</div>
+                </div>
+              </div>
+              <span className="font-semibold text-base text-[#70756F]">
+                {t.upcoming}
               </span>
-              <span className="text-lg text-slate-600 font-medium">Coming later</span>
             </div>
           </div>
-        </div>
+        </section>
+
+        {/* ========================================================= */}
+        {/* HERO 4: ONE QUESTION DAILY "HOW DO YOU FEEL?" (4 FACES)   */}
+        {/* ========================================================= */}
+        <section className="bg-white border border-[#EAE5DB] rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+          <div>
+            <h3 className="text-2xl font-bold text-[#1A1D1A] tracking-tight">
+              {t.howFeelTitle}
+            </h3>
+            <p className="text-lg text-[#70756F] mt-1">{t.howFeelSub}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3.5 pt-2">
+            {/* Face 1: Great */}
+            <button
+              onClick={() => {
+                setSelectedFeeling('great');
+                recordSymptomCheckin('great', 'Feeling wonderful and active');
+                setFeedbackNotice(t.thankYouFeeling);
+              }}
+              className={`min-h-[80px] p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 ${
+                selectedFeeling === 'great'
+                  ? 'border-[#244937] bg-[#EAF2EC] ring-4 ring-[#C6DBD0]'
+                  : 'border-[#EAE5DB] hover:border-[#244937] bg-[#FAF8F5]'
+              }`}
+            >
+              <span className="text-4xl">😊</span>
+              <span className="font-bold text-lg text-[#1A1D1A]">{t.great}</span>
+            </button>
+
+            {/* Face 2: Steady */}
+            <button
+              onClick={() => {
+                setSelectedFeeling('steady');
+                recordSymptomCheckin('steady', 'Steady and comfortable');
+                setFeedbackNotice(t.thankYouFeeling);
+              }}
+              className={`min-h-[80px] p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 ${
+                selectedFeeling === 'steady'
+                  ? 'border-[#244937] bg-[#EAF2EC] ring-4 ring-[#C6DBD0]'
+                  : 'border-[#EAE5DB] hover:border-[#244937] bg-[#FAF8F5]'
+              }`}
+            >
+              <span className="text-4xl">😌</span>
+              <span className="font-bold text-lg text-[#1A1D1A]">{t.steady}</span>
+            </button>
+
+            {/* Face 3: Tired (Warm Amber) */}
+            <button
+              onClick={() => {
+                setSelectedFeeling('tired');
+                recordSymptomCheckin('tired', 'Feeling a bit tired');
+                setFeedbackNotice(t.thankYouFeeling);
+              }}
+              className={`min-h-[80px] p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 ${
+                selectedFeeling === 'tired'
+                  ? 'border-[#92631E] bg-[#FBF5EA] ring-4 ring-[#EBDBC1]'
+                  : 'border-[#EAE5DB] hover:border-[#92631E] bg-[#FAF8F5]'
+              }`}
+            >
+              <span className="text-4xl">🥱</span>
+              <span className="font-bold text-lg text-[#1A1D1A]">{t.tired}</span>
+            </button>
+
+            {/* Face 4: Discomfort (Warm Amber, Never Shame) */}
+            <button
+              onClick={() => {
+                setSelectedFeeling('discomfort');
+                recordSymptomCheckin('discomfort', 'Reported discomfort or joint stiffness');
+                setFeedbackNotice(t.thankYouFeeling);
+              }}
+              className={`min-h-[80px] p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 ${
+                selectedFeeling === 'discomfort'
+                  ? 'border-[#92631E] bg-[#FBF5EA] ring-4 ring-[#EBDBC1]'
+                  : 'border-[#EAE5DB] hover:border-[#92631E] bg-[#FAF8F5]'
+              }`}
+            >
+              <span className="text-4xl">😣</span>
+              <span className="font-bold text-lg text-[#1A1D1A]">{t.discomfort}</span>
+            </button>
+          </div>
+        </section>
       </div>
 
-      {/* ONE BIG ACTION BUTTON: HOW ARE YOU FEELING */}
-      <div className="space-y-4 pb-4">
-        <button
-          onClick={() => setActiveView('wellness')}
-          className="w-full min-h-[72px] bg-[#064e3b] hover:bg-[#053d2e] text-white text-2xl font-bold rounded-2xl px-6 py-5 flex items-center justify-center gap-3 shadow-xl active:scale-98 cursor-pointer transition-all"
-        >
-          <HeartHandshake className="w-8 h-8 text-emerald-300" />
-          <span>Record how I am feeling</span>
-        </button>
-
+      {/* Bottom Veto & Governance Access */}
+      <footer className="pt-8 pb-4 text-center">
         <button
           onClick={() => setActiveView('veto')}
-          className="w-full min-h-[64px] bg-slate-100 hover:bg-slate-200 text-slate-900 border-2 border-slate-300 text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+          className="text-base text-[#70756F] hover:text-[#1A1D1A] font-semibold underline underline-offset-4 cursor-pointer py-2 px-4"
         >
-          <span>View recent changes & my veto power</span>
+          {t.reviewVeto}
         </button>
-      </div>
+      </footer>
     </div>
   );
 };

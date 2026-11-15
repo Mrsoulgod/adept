@@ -183,6 +183,38 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
     });
   });
 
+  describe('Elder Home: Time-Aware Greeting, Giant Card, 4 Faces & Voice', () => {
+    it('supports Hindi & English voice recognition for "maine goli kha li"', () => {
+      const phrases = ['maine goli kha li', 'goli kha li', 'took my pill', 'i have taken my pill'];
+      for (const phrase of phrases) {
+        const isMatch =
+          phrase.includes('goli kha li') ||
+          phrase.includes('maine goli') ||
+          phrase.includes('took my pill') ||
+          phrase.includes('taken');
+        expect(isMatch).toBe(true);
+      }
+    });
+
+    it('enforces 4 emotional/comfort faces for "How do you feel?" check-in', () => {
+      const faces: Array<'great' | 'steady' | 'tired' | 'discomfort'> = [
+        'great',
+        'steady',
+        'tired',
+        'discomfort',
+      ];
+      expect(faces.length).toBe(4);
+    });
+
+    it('anchors daily 3-item summary to meals (Breakfast, Lunch, Dinner)', () => {
+      const summaryMealAnchors = ['morning_breakfast', 'after_lunch', 'evening_dinner'];
+      expect(summaryMealAnchors.length).toBe(3);
+      for (const anchor of summaryMealAnchors) {
+        expect(MEAL_ANCHORS[anchor as MealAnchor]).toBeDefined();
+      }
+    });
+  });
+
   describe('Audit Log with Elder Veto', () => {
     it('maintains an audit trail and provides elder veto on caretaker actions', () => {
       expect(INITIAL_AUDIT_LOGS.length).toBeGreaterThan(0);

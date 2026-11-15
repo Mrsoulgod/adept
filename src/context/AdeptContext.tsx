@@ -26,6 +26,8 @@ import type { EmailDispatchResult } from '../lib/resend';
 
 interface AdeptContextType {
   role: Role;
+  language: 'en' | 'hi';
+  setLanguage: (lang: 'en' | 'hi') => void;
   profile: Profile;
   medications: Medication[];
   doseLogs: DoseLog[];
@@ -46,6 +48,8 @@ interface AdeptContextType {
   // Elder Actions (Centre of decisions)
   confirmDose: (medicationId: string, notes?: string) => void;
   deferDoseComfortably: (medicationId: string, note?: string) => void;
+  skipDoseComfortably: (medicationId: string, reason?: string) => void;
+  recordSymptomCheckin: (wellnessScore: 'great' | 'steady' | 'tired' | 'discomfort', notes?: string) => void;
   elderResolveProposal: (proposalId: string, accept: boolean) => void;
   elderVetoAction: (auditLogId: string) => void;
   // Caretaker Actions
@@ -69,6 +73,7 @@ export const ROLE_PASSCODES: Record<Role, string> = {
 
 export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [role, setRole] = useState<Role>('elder');
+  const [language, setLanguage] = useState<'en' | 'hi'>('en');
 
   // Load from local storage or defaults
   const [initialData] = useState(() => {
@@ -183,6 +188,58 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       actorName: `${profile.name} (Elder)`,
       action: `Chose to rest / defer ${med.friendlyName}`,
       plainEnglishDescription: `Arthur chose to take his time before taking ${med.friendlyName}. No rush or shame.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    };
+    setAuditLogs((prev) => [auditItem, ...prev]);
+  };
+
+  // 2b. ELDER ACTION: Skip Dose Comfortably (Warm Amber, Never Shame)
+  const skipDoseComfortably = (medicationId: string, reason?: string) => {
+    const med = medications.find((m) => m.id === medicationId);
+    if (!med) return;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const newLog: DoseLog = {
+      id: `log-${Date.now()}`,
+      medicationId: med.id,
+      medicationName: med.friendlyName,
+      mealAnchor: med.mealAnchor,
+      date: todayStr,
+      status: 'skipped_comfortably',
+      loggedAt: new Date().toISOString(),
+      loggedBy: 'elder',
+      notes: reason || 'Arthur decided to skip this dose today. Sarah notified quietly.',
+      comfortNote: reason || 'Resting comfortably today.',
+    };
+
+    setDoseLogs((prev) => [newLog, ...prev]);
+
+    const auditItem: AuditLogItem = {
+      id: `audit-${Date.now()}`,
+      actorRole: 'elder',
+      actorName: `${profile.name} (Elder)`,
+      action: `Skipped ${med.friendlyName} Comfortably`,
+      plainEnglishDescription: `Arthur chose to skip ${med.friendlyName} today. Logged calmly with zero penalty.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    };
+    setAuditLogs((prev) => [auditItem, ...prev]);
+  };
+
+  // 2c. ELDER ACTION: Daily "How do you feel?" Check-in
+  const recordSymptomCheckin = (
+    wellnessScore: 'great' | 'steady' | 'tired' | 'discomfort',
+    notes?: string
+  ) => {
+    const auditItem: AuditLogItem = {
+      id: `audit-${Date.now()}`,
+      actorRole: 'elder',
+      actorName: `${profile.name} (Elder Check-in)`,
+      action: `Wellness Check-in: ${wellnessScore}`,
+      plainEnglishDescription: `Arthur shared his daily feeling: "${wellnessScore}". ${notes ? `Note: "${notes}".` : ''} Shared quietly with care team.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
@@ -428,6 +485,8 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <AdeptContext.Provider
       value={{
         role,
+        language,
+        setLanguage,
         profile,
         medications,
         doseLogs,
@@ -441,6 +500,8 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setDirectRole,
         confirmDose,
         deferDoseComfortably,
+        skipDoseComfortably,
+        recordSymptomCheckin,
         elderResolveProposal,
         elderVetoAction,
         createProposalFromAI,
