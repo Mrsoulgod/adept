@@ -17,6 +17,13 @@ import {
   buildDeviationAlertHtml,
   buildUpcomingDoseReminderHtml,
 } from '../src/lib/resend';
+import {
+  computePersonalBaselines,
+  classifyDoseBehaviour,
+  buildCaretakerTimeline,
+  timeStringToMinutes,
+  minutesToTimeString,
+} from '../src/lib/baseline';
 
 describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
   describe('DESIGN LAWS (Never Break)', () => {
@@ -110,17 +117,146 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
     });
   });
 
-  describe('Hero Feature 2: Baseline-Deviation Alerts & Tracking', () => {
-    it('computes 7-day adherence logs and detects compliance', () => {
+  describe('Hero Feature 2: Baseline-Deviation Alerts & Personal Usual Dose-Time', () => {
+    it('computes each elder’s personal usual dose-time per medication from dose_logs', () => {
       const logs = getInitialDoseLogs();
-      expect(logs.length).toBeGreaterThan(10);
+      const baselines = computePersonalBaselines(INITIAL_MEDICATIONS, logs);
 
-      const takenLogs = logs.filter((l) => l.status === 'taken');
-      expect(takenLogs.length).toBeGreaterThan(0);
+      // Verify baselines computed for all active medications
+      for (const med of INITIAL_MEDICATIONS) {
+        const b = baselines[med.id];
+        expect(b).toBeDefined();
+        expect(b.medicationName).toBe(med.friendlyName);
+        expect(b.usualTimeString).toBeDefined();
+        expect(b.usualTimeMinutes).toBeGreaterThan(0);
+        expect(b.normalRangeStartString).toBeDefined();
+        expect(b.normalRangeEndString).toBeDefined();
+        expect(b.adherencePercentage).toBeGreaterThan(0);
+      }
 
-      // Morning breakfast compliance
-      const morningLogs = logs.filter((l) => l.mealAnchor === 'morning_breakfast');
-      expect(morningLogs.length).toBeGreaterThan(5);
+      // Check Arthur's morning medication baseline (~8:24 - 8:25 AM)
+      const morningMedBaseline = baselines['med-1'];
+      expect(morningMedBaseline.usualTimeString).toMatch(/8:2[4-6] AM/);
+      expect(morningMedBaseline.sampleSize).toBeGreaterThanOrEqual(6);
+      expect(morningMedBaseline.consecutiveSkips).toBe(0);
+    });
+
+    it('classifies dose within ±60m as "normal for Dad" and suppresses caretaker alerts', () => {
+      const baselines = computePersonalBaselines(INITIAL_MEDICATIONS, getInitialDoseLogs());
+      const med1 = INITIAL_MEDICATIONS[0];
+      const baseline = baselines[med1.id];
+
+      // Dose taken at 8:40 AM (only 15 mins after usual 8:25 AM)
+      const normalEvaluation = classifyDoseBehaviour({
+        medication: med1,
+        baseline,
+        log: {
+          id: 'test-normal-1',
+          medicationId: med1.id,
+          mealAnchor: med1.mealAnchor,
+          date: '2026-11-15',
+          status: 'taken',
+          loggedAt: '2026-11-15T08:40:00Z',
+          loggedBy: 'elder',
+        },
+      });
+
+      expect(normalEvaluation.classification).toBe('normal_for_dad');
+      expect(normalEvaluation.shouldAlertCaretaker).toBe(false);
+      expect(normalEvaluation.reason).toContain("Arthur's typical rhythm");
+    });
+
+    it('alerts caretakers ONLY when behaviour deviates from baseline: late by >60 minutes', () => {
+      const baselines = computePersonalBaselines(INITIAL_MEDICATIONS, getInitialDoseLogs());
+      const med1 = INITIAL_MEDICATIONS[0];
+      const baseline = baselines[med1.id];
+
+      // Dose taken at 10:15 AM (110 mins later than usual 8:25 AM)
+      const lateEvaluation = classifyDoseBehaviour({
+        medication: med1,
+        baseline,
+        log: {
+          id: 'test-late-1',
+          medicationId: med1.id,
+          mealAnchor: med1.mealAnchor,
+          date: '2026-11-15',
+          status: 'taken',
+          loggedAt: '2026-11-15T10:15:00Z',
+          loggedBy: 'elder',
+        },
+      });
+
+      expect(lateEvaluation.classification).toBe('unusual');
+      expect(lateEvaluation.shouldAlertCaretaker).toBe(true);
+      expect(lateEvaluation.reason).toContain('later than Arthur\'s usual');
+    });
+
+    it('alerts caretakers when behaviour deviates: no response past personal window', () => {
+      const baselines = computePersonalBaselines(INITIAL_MEDICATIONS, getInitialDoseLogs());
+      const med1 = INITIAL_MEDICATIONS[0];
+      const baseline = baselines[med1.id]; // ~8:25 AM = 505 minutes
+
+      // Current time is 10:00 AM (600 minutes, 95 mins past baseline) with no dose confirmation
+      const unconfirmedEvaluation = classifyDoseBehaviour({
+        medication: med1,
+        baseline,
+        currentHourMinutes: 600, // 10:00 AM
+      });
+
+      expect(unconfirmedEvaluation.classification).toBe('unusual');
+      expect(unconfirmedEvaluation.shouldAlertCaretaker).toBe(true);
+      expect(unconfirmedEvaluation.reason).toContain('No confirmation logged');
+    });
+
+    it('alerts caretakers on repeated skips (2+ consecutive skips)', () => {
+      const med1 = INITIAL_MEDICATIONS[0];
+      const baselineWithSkips = {
+        medicationId: med1.id,
+        medicationName: med1.friendlyName,
+        mealAnchor: med1.mealAnchor,
+        usualTimeString: '8:25 AM',
+        usualTimeMinutes: 505,
+        normalRangeStartString: '7:50 AM',
+        normalRangeEndString: '9:00 AM',
+        windowLabel: '7:00 AM – 10:00 AM',
+        sampleSize: 5,
+        adherencePercentage: 60,
+        consecutiveSkips: 2, // 2 consecutive skips
+      };
+
+      const skipEvaluation = classifyDoseBehaviour({
+        medication: med1,
+        baseline: baselineWithSkips,
+      });
+
+      expect(skipEvaluation.classification).toBe('unusual');
+      expect(skipEvaluation.shouldAlertCaretaker).toBe(true);
+      expect(skipEvaluation.reason).toContain('Repeated skips detected: 2 consecutive skips');
+    });
+
+    it('builds caretaker timeline with "normal for Dad" vs "unusual" labels', () => {
+      const logs = getInitialDoseLogs();
+      const baselines = computePersonalBaselines(INITIAL_MEDICATIONS, logs);
+      const timeline = buildCaretakerTimeline(INITIAL_MEDICATIONS, logs, baselines);
+
+      expect(timeline.length).toBeGreaterThan(10);
+
+      // Verify classifications exist
+      const normalEvents = timeline.filter((e) => e.classification === 'normal_for_dad');
+      const unusualEvents = timeline.filter((e) => e.classification === 'unusual');
+
+      expect(normalEvents.length).toBeGreaterThan(0);
+      expect(unusualEvents.length).toBeGreaterThan(0);
+
+      // Verify the 2-days-ago delayed lunch dose (14:15) was labeled "unusual"
+      const delayedEvent = timeline.find((e) => e.actualTimeString === '2:15 PM');
+      expect(delayedEvent).toBeDefined();
+      expect(delayedEvent?.classification).toBe('unusual');
+      expect(delayedEvent?.deviationReason).toContain('later than Arthur\'s usual');
+
+      // Verify regular morning doses are labeled "normal for Dad"
+      const regularMorning = timeline.find((e) => e.mealAnchor === 'morning_breakfast');
+      expect(regularMorning?.classification).toBe('normal_for_dad');
     });
   });
 
