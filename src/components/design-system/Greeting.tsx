@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export interface GreetingProps {
   elderName: string;
@@ -16,7 +16,7 @@ export const Greeting: React.FC<GreetingProps> = ({
   isCalmDefault = true,
 }) => {
   // Determine time of day if not explicitly passed
-  const currentHour = new Date().getHours();
+  const [currentHour] = useState(() => new Date().getHours());
   const calculatedTimeOfDay =
     timeOfDay ||
     (currentHour < 12 ? 'morning' : currentHour < 17 ? 'afternoon' : 'evening');
@@ -27,11 +27,13 @@ export const Greeting: React.FC<GreetingProps> = ({
     evening: 'Good evening',
   }[calculatedTimeOfDay];
 
-  const formattedDate = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  });
+  const [formattedDate] = useState(() =>
+    new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    })
+  );
 
   return (
     <header className="w-full bg-[#FAF8F5] py-4">

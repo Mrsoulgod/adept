@@ -78,7 +78,7 @@ export const CareCircleChatModal: React.FC<CareCircleChatModalProps> = ({
         try { recognitionRef.current.abort(); } catch {}
       }
     };
-  }, [activeChannelId, language]);
+  }, [activeChannelId, language, sendChatMessage]);
 
   const toggleVoiceRecording = () => {
     if (!recognitionRef.current) {

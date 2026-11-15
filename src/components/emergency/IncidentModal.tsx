@@ -47,7 +47,7 @@ export const IncidentModal: React.FC<IncidentModalProps> = ({ incident, onClose 
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [incident.id, isClaimed, isResolved]);
+  }, [incident.id, isClaimed, isResolved, escalateIncident]);
 
   const handleClaim = () => {
     const claimantName = authUser?.name || (role === 'caretaker' ? 'Sarah Davies (Caretaker)' : 'James Davies (Family)');

@@ -28,10 +28,11 @@ export const InactivitySafetyCheckModal: React.FC<InactivitySafetyCheckModalProp
 
   // 30-second countdown (Prompt 13 requirement: no tap in 30s -> auto-trigger SOS flow)
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen) return;
+
+    const resetTimer = setTimeout(() => {
       setSecondsRemaining(30);
-      return;
-    }
+    }, 0);
 
     const interval = setInterval(() => {
       setSecondsRemaining((prev) => {
@@ -44,8 +45,11 @@ export const InactivitySafetyCheckModal: React.FC<InactivitySafetyCheckModalProp
       });
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [isOpen]);
+    return () => {
+      clearTimeout(resetTimer);
+      clearInterval(interval);
+    };
+  }, [isOpen, onTriggerSos]);
 
   // Experimental DeviceMotion Fall Detection listener (Beta)
   useEffect(() => {

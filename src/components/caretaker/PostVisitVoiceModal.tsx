@@ -87,7 +87,7 @@ export const PostVisitVoiceModal: React.FC<PostVisitVoiceModalProps> = ({ onClos
       try {
         recognition.start();
         setIsRecording(true);
-      } catch (e) {
+      } catch {
         setIsRecording(false);
       }
     }

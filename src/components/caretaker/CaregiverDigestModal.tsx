@@ -197,9 +197,11 @@ export const CaregiverDigestModal: React.FC<CaregiverDigestModalProps> = ({ onCl
               </div>
 
               <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-inner max-h-72 overflow-y-auto bg-slate-100 p-2">
-                <div
-                  className="bg-white rounded-xl p-4 shadow-sm"
-                  dangerouslySetInnerHTML={{ __html: previewHtml || lastEmailDispatch?.htmlContent || '' }}
+                <iframe
+                  title="Caregiver Digest Preview"
+                  srcDoc={previewHtml || lastEmailDispatch?.htmlContent || ''}
+                  className="w-full h-72 rounded-xl border-0 bg-white shadow-sm"
+                  sandbox="allow-same-origin"
                 />
               </div>
 

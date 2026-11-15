@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAdept } from '../../context/AdeptContext';
 import type { VitalRecord, VitalType } from '../../lib/types';
 import {
@@ -51,6 +51,145 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ onClose }) => {
   // Filter vitals for current type
   const typeVitals = vitals.filter((v) => v.type === activeType && v.elderId === activeElder.id);
 
+  // Evaluate gentle clinical range flags that NEVER alarm (Prompt 9 constraint)
+  const evaluateRangeFlag = useCallback(
+    (vital: Partial<VitalRecord>): { flag: 'normal' | 'low' | 'high' | 'steady'; label: string; isOutOfRange: boolean } => {
+      if (vital.type === 'bp') {
+        const sys = vital.systolic || 120;
+        const dia = vital.diastolic || 80;
+        if (sys > 140 || dia > 90) {
+          return {
+            flag: 'high',
+            label: `Slightly above ${activeElder.name.split(' ')[0]}'s usual baseline (resting recommended)`,
+            isOutOfRange: true,
+          };
+        }
+        if (sys < 100 || dia < 65) {
+          return {
+            flag: 'low',
+            label: `A bit lower than usual (have a glass of water and rest comfortably)`,
+            isOutOfRange: true,
+          };
+        }
+        return {
+          flag: 'normal',
+          label: `Normal resting range for ${activeElder.name.split(' ')[0]}`,
+          isOutOfRange: false,
+        };
+      }
+
+      if (vital.type === 'sugar') {
+        const val = vital.bloodSugar || 100;
+        if (val > 150) {
+          return {
+            flag: 'high',
+            label: 'Slightly elevated post-meal reading (steady walk advised)',
+            isOutOfRange: true,
+          };
+        }
+        if (val < 70) {
+          return {
+            flag: 'low',
+            label: 'Lower than usual (enjoy a small snack or fruit juice)',
+            isOutOfRange: true,
+          };
+        }
+        return {
+          flag: 'steady',
+          label: 'Steady normal glucose level',
+          isOutOfRange: false,
+        };
+      }
+
+      return { flag: 'steady', label: 'Steady baseline reading', isOutOfRange: false };
+    },
+    [activeElder.name]
+  );
+
+  const prepareVitalConfirmation = useCallback(
+    (vitalData: Partial<VitalRecord>) => {
+      const rangeInfo = evaluateRangeFlag(vitalData);
+      const completeVital: Omit<VitalRecord, 'id' | 'loggedAt'> = {
+        elderId: activeElder.id,
+        type: vitalData.type || activeType,
+        systolic: vitalData.systolic,
+        diastolic: vitalData.diastolic,
+        bloodSugar: vitalData.bloodSugar,
+        weightKg: vitalData.weightKg,
+        pulseBpm: vitalData.pulseBpm,
+        context: vitalData.context || 'resting',
+        rangeFlag: rangeInfo.flag,
+        rangeFlagLabel: rangeInfo.label,
+        notes: vitalData.notes || '',
+        loggedBy: role,
+      };
+
+      setPendingVital(completeVital);
+      setConfirmModalOpen(true);
+    },
+    [activeElder.id, activeType, evaluateRangeFlag, role]
+  );
+
+  // Parse spoken vitals using pattern recognition (Prompt 9)
+  const parseVitalsVoice = useCallback(
+    (spokenText: string) => {
+      const lower = spokenText.toLowerCase();
+
+      if (activeType === 'bp' || lower.includes('bp') || lower.includes('pressure') || lower.includes('बाय')) {
+        const nums = lower.match(/\d+/g);
+        if (nums && nums.length >= 2) {
+          const sys = parseInt(nums[0], 10);
+          const dia = parseInt(nums[1], 10);
+          const pulse = nums[2] ? parseInt(nums[2], 10) : 72;
+          prepareVitalConfirmation({
+            elderId: activeElder.id,
+            type: 'bp',
+            systolic: sys,
+            diastolic: dia,
+            pulseBpm: pulse,
+            context: 'resting',
+            loggedBy: role,
+            notes: `Voice recorded: "${spokenText}"`,
+          });
+          return;
+        }
+      }
+
+      if (activeType === 'sugar' || lower.includes('sugar') || lower.includes('glucose')) {
+        const nums = lower.match(/\d+/g);
+        if (nums && nums.length >= 1) {
+          const sugar = parseInt(nums[0], 10);
+          prepareVitalConfirmation({
+            elderId: activeElder.id,
+            type: 'sugar',
+            bloodSugar: sugar,
+            context: lower.includes('fasting') ? 'fasting' : 'post_meal',
+            loggedBy: role,
+            notes: `Voice recorded: "${spokenText}"`,
+          });
+          return;
+        }
+      }
+
+      if (activeType === 'weight' || lower.includes('weight')) {
+        const nums = lower.match(/[\d.]+/g);
+        if (nums && nums.length >= 1) {
+          const wt = parseFloat(nums[0]);
+          prepareVitalConfirmation({
+            elderId: activeElder.id,
+            type: 'weight',
+            weightKg: wt,
+            context: 'resting',
+            loggedBy: role,
+            notes: `Voice recorded: "${spokenText}"`,
+          });
+          return;
+        }
+      }
+    },
+    [activeElder.id, activeType, prepareVitalConfirmation, role]
+  );
+
   // Setup Web Speech API for Vitals Voice parsing (Prompt 9: "BP 130 by 85")
   useEffect(() => {
     const SpeechRecognition =
@@ -82,7 +221,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ onClose }) => {
         try { recognitionRef.current.abort(); } catch {}
       }
     };
-  }, [activeType, language]);
+  }, [language, parseVitalsVoice]);
 
   const toggleVoiceListening = () => {
     if (!recognitionRef.current) {
@@ -104,136 +243,6 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ onClose }) => {
         setIsListening(false);
       }
     }
-  };
-
-  // Parse spoken vitals using pattern recognition (Prompt 9)
-  const parseVitalsVoice = (spokenText: string) => {
-    const lower = spokenText.toLowerCase();
-
-    if (activeType === 'bp' || lower.includes('bp') || lower.includes('pressure') || lower.includes('बाय')) {
-      const nums = lower.match(/\d+/g);
-      if (nums && nums.length >= 2) {
-        const sys = parseInt(nums[0], 10);
-        const dia = parseInt(nums[1], 10);
-        const pulse = nums[2] ? parseInt(nums[2], 10) : 72;
-        prepareVitalConfirmation({
-          elderId: activeElder.id,
-          type: 'bp',
-          systolic: sys,
-          diastolic: dia,
-          pulseBpm: pulse,
-          context: 'resting',
-          loggedBy: role,
-          notes: `Voice recorded: "${spokenText}"`,
-        });
-        return;
-      }
-    }
-
-    if (activeType === 'sugar' || lower.includes('sugar') || lower.includes('glucose')) {
-      const nums = lower.match(/\d+/g);
-      if (nums && nums.length >= 1) {
-        const sugar = parseInt(nums[0], 10);
-        prepareVitalConfirmation({
-          elderId: activeElder.id,
-          type: 'sugar',
-          bloodSugar: sugar,
-          context: lower.includes('fasting') ? 'fasting' : 'post_meal',
-          loggedBy: role,
-          notes: `Voice recorded: "${spokenText}"`,
-        });
-        return;
-      }
-    }
-
-    if (activeType === 'weight' || lower.includes('weight')) {
-      const nums = lower.match(/[\d.]+/g);
-      if (nums && nums.length >= 1) {
-        const wt = parseFloat(nums[0]);
-        prepareVitalConfirmation({
-          elderId: activeElder.id,
-          type: 'weight',
-          weightKg: wt,
-          context: 'resting',
-          loggedBy: role,
-          notes: `Voice recorded: "${spokenText}"`,
-        });
-        return;
-      }
-    }
-  };
-
-  // Evaluate gentle clinical range flags that NEVER alarm (Prompt 9 constraint)
-  const evaluateRangeFlag = (vital: Partial<VitalRecord>): { flag: 'normal' | 'low' | 'high' | 'steady'; label: string; isOutOfRange: boolean } => {
-    if (vital.type === 'bp') {
-      const sys = vital.systolic || 120;
-      const dia = vital.diastolic || 80;
-      if (sys > 140 || dia > 90) {
-        return {
-          flag: 'high',
-          label: `Slightly above ${activeElder.name.split(' ')[0]}'s usual baseline (resting recommended)`,
-          isOutOfRange: true,
-        };
-      }
-      if (sys < 100 || dia < 65) {
-        return {
-          flag: 'low',
-          label: `A bit lower than usual (have a glass of water and rest comfortably)`,
-          isOutOfRange: true,
-        };
-      }
-      return {
-        flag: 'normal',
-        label: `Normal resting range for ${activeElder.name.split(' ')[0]}`,
-        isOutOfRange: false,
-      };
-    }
-
-    if (vital.type === 'sugar') {
-      const val = vital.bloodSugar || 100;
-      if (val > 150) {
-        return {
-          flag: 'high',
-          label: 'Slightly elevated post-meal reading (steady walk advised)',
-          isOutOfRange: true,
-        };
-      }
-      if (val < 70) {
-        return {
-          flag: 'low',
-          label: 'Lower than usual (enjoy a small snack or fruit juice)',
-          isOutOfRange: true,
-        };
-      }
-      return {
-        flag: 'steady',
-        label: 'Steady normal glucose level',
-        isOutOfRange: false,
-      };
-    }
-
-    return { flag: 'steady', label: 'Steady baseline reading', isOutOfRange: false };
-  };
-
-  const prepareVitalConfirmation = (vitalData: Partial<VitalRecord>) => {
-    const rangeInfo = evaluateRangeFlag(vitalData);
-    const completeVital: Omit<VitalRecord, 'id' | 'loggedAt'> = {
-      elderId: activeElder.id,
-      type: vitalData.type || activeType,
-      systolic: vitalData.systolic,
-      diastolic: vitalData.diastolic,
-      bloodSugar: vitalData.bloodSugar,
-      weightKg: vitalData.weightKg,
-      pulseBpm: vitalData.pulseBpm,
-      context: vitalData.context || 'resting',
-      rangeFlag: rangeInfo.flag,
-      rangeFlagLabel: rangeInfo.label,
-      notes: vitalData.notes || '',
-      loggedBy: role,
-    };
-
-    setPendingVital(completeVital);
-    setConfirmModalOpen(true);
   };
 
   const handleNumpadTap = (digit: string) => {

@@ -10,7 +10,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-    const { profileId = "arthur-davies-78", recipientEmail = "sarah.care@example.com" } = await req.json().catch(() => ({}));
+    const { profileId: _profileId = "arthur-davies-78", recipientEmail = "sarah.care@example.com" } = await req.json().catch(() => ({}));
 
     // Fetch today's dose logs
     const today = new Date().toISOString().split("T")[0];

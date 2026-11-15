@@ -32,7 +32,7 @@ export const CaretakerTodayTab: React.FC = () => {
   const totalMeds = elderMeds.filter((m: Medication) => m.isActive).length;
   const elderMedIds = new Set(elderMeds.map((m) => m.id));
 
-  const todayDate = new Date().toISOString().split('T')[0];
+  const [todayDate] = useState(() => new Date().toISOString().split('T')[0]);
   const todayLogs = doseLogs.filter(
     (l: DoseLog) => l.date === todayDate && elderMedIds.has(l.medicationId)
   );

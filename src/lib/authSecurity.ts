@@ -17,7 +17,7 @@ export async function hashPin(pin: string): Promise<string> {
       const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-    } catch (e) {
+    } catch {
       // Fallback below
     }
   }
@@ -83,7 +83,7 @@ export function getLockoutStatus(memberIdOrRole: string = 'caretaker'): LockoutS
       failedAttempts: failed,
       remainingAttempts: Math.max(0, MAX_ATTEMPTS - failed),
     };
-  } catch (e) {
+  } catch {
     return { isLocked: false, failedAttempts: 0, remainingAttempts: MAX_ATTEMPTS };
   }
 }
@@ -129,7 +129,7 @@ export function recordFailedAttempt(memberIdOrRole: string = 'caretaker'): Locko
 export function resetLockout(memberIdOrRole: string = 'caretaker'): void {
   try {
     localStorage.removeItem(`${LOCKOUT_KEY_PREFIX}${memberIdOrRole}`);
-  } catch (e) {
+  } catch {
     // ignore
   }
 }

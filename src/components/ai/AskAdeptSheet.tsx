@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAdept } from '../../context/AdeptContext';
 import {
   Sparkles,
@@ -61,33 +61,107 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
   const isElder = role === 'elder';
 
   // Role-specific quick questions derived from live data (Prompt 8)
-  const quickChips = isElder
-    ? [
-        language === 'hi' ? 'मेरी अगली दवा क्या है?' : "What's next for me?",
-        language === 'hi' ? 'दवाइयां कितनी बची हैं?' : 'How many tablets left?',
-        language === 'hi' ? 'क्या मैंने सुबह की दवा ली?' : 'Did I take my morning dose?',
-      ]
-    : [
-        `How was ${activeElder.name.split(' ')[0]}'s week?`,
-        'Anything unusual detected?',
-        'What needs refilling soon?',
-        `How is ${activeElder.name.split(' ')[0]}'s blood pressure?`,
-      ];
+  const quickChips = useMemo(() => {
+    return isElder
+      ? [
+          language === 'hi' ? 'मेरी अगली दवा क्या है?' : "What's next for me?",
+          language === 'hi' ? 'दवाइयां कितनी बची हैं?' : 'How many tablets left?',
+          language === 'hi' ? 'क्या मैंने सुबह की दवा ली?' : 'Did I take my morning dose?',
+        ]
+      : [
+          `How was ${activeElder.name.split(' ')[0]}'s week?`,
+          'Anything unusual detected?',
+          'What needs refilling soon?',
+          `How is ${activeElder.name.split(' ')[0]}'s blood pressure?`,
+        ];
+  }, [activeElder.name, isElder, language]);
 
   // Tool execution context for tool calls
-  const toolCtx: ToolExecutionContext = {
-    medications,
-    events,
-    vitals,
-    role,
-    elderName: activeElder.name,
-    doctorName: activeElder.doctorName || 'Dr. Evelyn Vance',
-    stockRemainingFn: getStockRemaining,
-    daysOfSupplyFn: getDaysOfSupply,
-    adherence7dFn: getAdherence7d,
-    adherence30dFn: getAdherence30d,
-    usualDoseTimeFn: getUsualDoseTime,
-  };
+  const toolCtx: ToolExecutionContext = useMemo(
+    () => ({
+      medications,
+      events,
+      vitals,
+      role,
+      elderName: activeElder.name,
+      doctorName: activeElder.doctorName || 'Dr. Evelyn Vance',
+      stockRemainingFn: getStockRemaining,
+      daysOfSupplyFn: getDaysOfSupply,
+      adherence7dFn: getAdherence7d,
+      adherence30dFn: getAdherence30d,
+      usualDoseTimeFn: getUsualDoseTime,
+    }),
+    [
+      activeElder.doctorName,
+      activeElder.name,
+      events,
+      getStockRemaining,
+      getDaysOfSupply,
+      getAdherence7d,
+      getAdherence30d,
+      getUsualDoseTime,
+      medications,
+      role,
+      vitals,
+    ]
+  );
+
+  const handleAskQuestion = useCallback(
+    async (qText: string) => {
+      const clean = qText.trim();
+      if (!clean) return;
+
+      // 1. Add User Message
+      const userMsg: AdeptAiMessage = {
+        id: `usr-${Date.now()}`,
+        role: 'user',
+        content: clean,
+        timestamp: 'Just now',
+      };
+
+      setMessages((prev) => [...prev, userMsg]);
+      setInputQuestion('');
+      setIsLoading(true);
+
+      // 2. Log event: ai_question (Prompt 7 & 8 requirement)
+      recordEvent({
+        circleId: activeElder.id,
+        actorRole: role,
+        type: 'ai_question',
+        payload: { question: clean, role },
+        source: 'ask_adept_sheet',
+      });
+
+      try {
+        // 3. Dispatch to Adept AI Core
+        const res = await askAdeptAi(clean, toolCtx, language);
+
+        const assistantMsg: AdeptAiMessage = {
+          id: `ast-${Date.now()}`,
+          role: 'assistant',
+          content: res.answer,
+          sources: res.sources,
+          followUpChips: res.followUpChips,
+          isEmergency: res.isEmergency,
+          timestamp: 'Just now',
+        };
+
+        setMessages((prev) => [...prev, assistantMsg]);
+
+        // If user asks for voice reading (or for elder), speak it gently (respects sound toggle)
+        if (isAiSoundEnabled && isElder && 'speechSynthesis' in window && !res.isEmergency) {
+          try {
+            const utter = new SpeechSynthesisUtterance(res.answer);
+            utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+            window.speechSynthesis.speak(utter);
+          } catch {}
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [activeElder.id, isAiSoundEnabled, isElder, language, recordEvent, role, toolCtx]
+  );
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -98,60 +172,65 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    if (contextMed) {
-      // Prompt 10: "Why this pill?" voice helper with 3 short sentences
-      const whyHelper = getWhyThisPillHelper(contextMed, language);
-      const initialAssistantMsg: AdeptAiMessage = {
-        id: `msg-${Date.now()}`,
-        role: 'assistant',
-        content: whyHelper.fullText,
-        sources: [
-          `Prescription Purpose (${contextMed.friendlyName})`,
-          `Dr. ${contextMed.prescribedBy || 'Evelyn Vance'} Regimen`,
-        ],
-        followUpChips: [
-          `How many ${contextMed.friendlyName} left?`,
-          'When do I take this next?',
-          'Confirm with doctor',
-        ],
-        timestamp: 'Just now',
-      };
-      setMessages([initialAssistantMsg]);
-
-      // Read aloud automatically using Web Speech Synthesis (respects sound toggle)
-      if (isAiSoundEnabled && 'speechSynthesis' in window) {
-        try {
-          const utter = new SpeechSynthesisUtterance(whyHelper.fullText);
-          utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
-          window.speechSynthesis.speak(utter);
-        } catch {}
-      }
-      return;
-    }
-
-    if (initialQuestion) {
-      handleAskQuestion(initialQuestion);
-      return;
-    }
-
-    if (messages.length === 0) {
-      const greeting =
-        language === 'hi'
-          ? `नमस्ते! मैं अडेप्ट केयर सहायक हूँ। आप मुझसे ${activeElder.name} की दवाओं, खुराक के समय, स्टॉक या स्वास्थ्य के बारे में पूछ सकते हैं।`
-          : `Hello! I'm Adept AI for ${activeElder.name}'s care circle. Ask me anything about scheduled doses, stock counts, adherence trends, or vitals.`;
-
-      setMessages([
-        {
-          id: 'welcome',
+    const timer = setTimeout(() => {
+      if (contextMed) {
+        // Prompt 10: "Why this pill?" voice helper with 3 short sentences
+        const whyHelper = getWhyThisPillHelper(contextMed, language);
+        const initialAssistantMsg: AdeptAiMessage = {
+          id: `msg-${Date.now()}`,
           role: 'assistant',
-          content: greeting,
-          sources: ['Adept Clinical Knowledge Spine'],
-          followUpChips: quickChips,
-          timestamp: 'Now',
-        },
-      ]);
-    }
-  }, [isOpen, contextMed, initialQuestion]);
+          content: whyHelper.fullText,
+          sources: [
+            `Prescription Purpose (${contextMed.friendlyName})`,
+            `Dr. ${contextMed.prescribedBy || 'Evelyn Vance'} Regimen`,
+          ],
+          followUpChips: [
+            `How many ${contextMed.friendlyName} left?`,
+            'When do I take this next?',
+            'Confirm with doctor',
+          ],
+          timestamp: 'Just now',
+        };
+        setMessages([initialAssistantMsg]);
+
+        // Read aloud automatically using Web Speech Synthesis (respects sound toggle)
+        if (isAiSoundEnabled && 'speechSynthesis' in window) {
+          try {
+            const utter = new SpeechSynthesisUtterance(whyHelper.fullText);
+            utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+            window.speechSynthesis.speak(utter);
+          } catch {}
+        }
+        return;
+      }
+
+      if (initialQuestion) {
+        handleAskQuestion(initialQuestion);
+        return;
+      }
+
+      setMessages((prev) => {
+        if (prev.length > 0) return prev;
+        const greeting =
+          language === 'hi'
+            ? `नमस्ते! मैं अडेप्ट केयर सहायक हूँ। आप मुझसे ${activeElder.name} की दवाओं, खुराक के समय, स्टॉक या स्वास्थ्य के बारे में पूछ सकते हैं।`
+            : `Hello! I'm Adept AI for ${activeElder.name}'s care circle. Ask me anything about scheduled doses, stock counts, adherence trends, or vitals.`;
+
+        return [
+          {
+            id: 'welcome',
+            role: 'assistant',
+            content: greeting,
+            sources: ['Adept Clinical Knowledge Spine'],
+            followUpChips: quickChips,
+            timestamp: 'Now',
+          },
+        ];
+      });
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, contextMed, initialQuestion, activeElder.name, language, quickChips, isAiSoundEnabled, handleAskQuestion]);
 
   // Web Speech API Voice Recognition setup
   useEffect(() => {
@@ -184,7 +263,7 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
         try { recognitionRef.current.abort(); } catch {}
       }
     };
-  }, [language]);
+  }, [language, handleAskQuestion]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
@@ -210,60 +289,6 @@ export const AskAdeptSheet: React.FC<AskAdeptSheetProps> = ({
       } catch {
         setIsListening(false);
       }
-    }
-  };
-
-  const handleAskQuestion = async (qText: string) => {
-    const clean = qText.trim();
-    if (!clean) return;
-
-    // 1. Add User Message
-    const userMsg: AdeptAiMessage = {
-      id: `usr-${Date.now()}`,
-      role: 'user',
-      content: clean,
-      timestamp: 'Just now',
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setInputQuestion('');
-    setIsLoading(true);
-
-    // 2. Log event: ai_question (Prompt 7 & 8 requirement)
-    recordEvent({
-      circleId: activeElder.id,
-      actorRole: role,
-      type: 'ai_question',
-      payload: { question: clean, role },
-      source: 'ask_adept_sheet',
-    });
-
-    try {
-      // 3. Dispatch to Adept AI Core
-      const res = await askAdeptAi(clean, toolCtx, language);
-
-      const assistantMsg: AdeptAiMessage = {
-        id: `ast-${Date.now()}`,
-        role: 'assistant',
-        content: res.answer,
-        sources: res.sources,
-        followUpChips: res.followUpChips,
-        isEmergency: res.isEmergency,
-        timestamp: 'Just now',
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
-
-      // If user asks for voice reading (or for elder), speak it gently (respects sound toggle)
-      if (isAiSoundEnabled && isElder && 'speechSynthesis' in window && !res.isEmergency) {
-        try {
-          const utter = new SpeechSynthesisUtterance(res.answer);
-          utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
-          window.speechSynthesis.speak(utter);
-        } catch {}
-      }
-    } finally {
-      setIsLoading(false);
     }
   };
 

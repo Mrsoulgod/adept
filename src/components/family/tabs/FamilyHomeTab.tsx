@@ -47,7 +47,7 @@ export const FamilyHomeTab: React.FC = () => {
   const eveningMeds = elderMeds.filter((m) => m.mealAnchor === 'evening_dinner');
 
   // Today's logs
-  const todayDate = new Date().toISOString().split('T')[0];
+  const [todayDate] = useState(() => new Date().toISOString().split('T')[0]);
   const todayLogs = doseLogs.filter((l: DoseLog) => l.date === todayDate);
 
   const morningLog = todayLogs.find((l: DoseLog) => l.mealAnchor === 'morning_breakfast');

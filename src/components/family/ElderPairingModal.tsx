@@ -29,7 +29,6 @@ export const ElderPairingModal: React.FC<ElderPairingModalProps> = ({ onClose })
 
   // Live 15-minute countdown timer (Prompt 4 requirement: expires in 15 min)
   useEffect(() => {
-    setSecondsRemaining(activePairingCodeMeta.secondsRemaining);
     const interval = setInterval(() => {
       setSecondsRemaining((prev) => {
         if (prev <= 1) {
@@ -40,7 +39,12 @@ export const ElderPairingModal: React.FC<ElderPairingModalProps> = ({ onClose })
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [activePairingCodeMeta]);
+  }, []);
+
+  const handleRegenerate = () => {
+    regeneratePairingCode();
+    setSecondsRemaining(900);
+  };
 
   const minutes = Math.floor(secondsRemaining / 60);
   const seconds = secondsRemaining % 60;
@@ -132,7 +136,7 @@ export const ElderPairingModal: React.FC<ElderPairingModalProps> = ({ onClose })
           {/* Regenerate if expired */}
           {isExpired && (
             <button
-              onClick={regeneratePairingCode}
+              onClick={handleRegenerate}
               className="text-xs text-[#064e3b] font-bold underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAdept } from '../../context/AdeptContext';
 import {
   Brain,
@@ -49,7 +49,7 @@ export const ElderMindTab: React.FC = () => {
   const [isSpeakingCaption, setIsSpeakingCaption] = useState<boolean>(false);
 
   // Timing for responseMs
-  const questionStartTimeRef = useRef<number>(Date.now());
+  const questionStartTimeRef = useRef<number>(0);
   const hintUsedRef = useRef<boolean>(false);
 
   // Memory lane photos pool
@@ -57,11 +57,15 @@ export const ElderMindTab: React.FC = () => {
     memoryLanePhotos.length > 0 ? memoryLanePhotos : [];
 
   // Routine recall questions pool
-  const routineQuestions: RoutineRecallQuestion[] = generateRoutineRecallQuestions(
-    medications,
-    doseLogs,
-    elderFirstName,
-    language
+  const routineQuestions: RoutineRecallQuestion[] = useMemo(
+    () =>
+      generateRoutineRecallQuestions(
+        medications,
+        doseLogs,
+        elderFirstName,
+        language
+      ),
+    [medications, doseLogs, elderFirstName, language]
   );
 
   const totalQuestionsInSession = 5;
@@ -83,31 +87,39 @@ export const ElderMindTab: React.FC = () => {
   useEffect(() => {
     questionStartTimeRef.current = Date.now();
     hintUsedRef.current = false;
-    setGentleHintText(null);
-    setSelectedOptionId(null);
-    setIsAnswerRevealed(false);
-    setEncouragementNote('');
+    const timer = setTimeout(() => {
+      setGentleHintText(null);
+      setSelectedOptionId(null);
+      setIsAnswerRevealed(false);
+      setEncouragementNote('');
+      setIsSpeakingCaption(false);
+    }, 0);
+
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      setIsSpeakingCaption(false);
     }
+
+    return () => clearTimeout(timer);
   }, [sessionIndex, activeModule]);
 
   // Voice narration helper
-  const speakText = (text: string) => {
-    if (!isAiSoundEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.88;
-      utterance.pitch = 1.0;
-      utterance.lang = isHindi ? 'hi-IN' : 'en-US';
-      utterance.onstart = () => setIsSpeakingCaption(true);
-      utterance.onend = () => setIsSpeakingCaption(false);
-      utterance.onerror = () => setIsSpeakingCaption(false);
-      window.speechSynthesis.speak(utterance);
-    } catch {}
-  };
+  const speakText = useCallback(
+    (text: string) => {
+      if (!isAiSoundEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.88;
+        utterance.pitch = 1.0;
+        utterance.lang = isHindi ? 'hi-IN' : 'en-US';
+        utterance.onstart = () => setIsSpeakingCaption(true);
+        utterance.onend = () => setIsSpeakingCaption(false);
+        utterance.onerror = () => setIsSpeakingCaption(false);
+        window.speechSynthesis.speak(utterance);
+      } catch {}
+    },
+    [isAiSoundEnabled, isHindi]
+  );
 
   // Build 3 options for Memory Lane photo
   const getMemoryLaneOptions = () => {
@@ -151,63 +163,76 @@ export const ElderMindTab: React.FC = () => {
     return shuffled;
   };
 
-  const handleOptionClick = (isCorrect: boolean, optionId: string, _optionLabel: string) => {
-    if (isAnswerRevealed && isCorrect) return;
+  const handleOptionClick = useCallback(
+    (isCorrect: boolean, optionId: string, _optionLabel: string) => {
+      if (isAnswerRevealed && isCorrect) return;
 
-    const responseMs = Math.max(800, Date.now() - questionStartTimeRef.current);
-    setSelectedOptionId(optionId);
+      const responseMs = Math.max(800, Date.now() - questionStartTimeRef.current);
+      setSelectedOptionId(optionId);
 
-    if (isCorrect) {
-      setIsAnswerRevealed(true);
-      const enc = isHindi
-        ? 'शानदार! यह बिल्कुल सही है।'
-        : 'Wonderful! You remembered beautifully.';
-      setEncouragementNote(enc);
+      if (isCorrect) {
+        setIsAnswerRevealed(true);
+        const enc = isHindi
+          ? 'शानदार! यह बिल्कुल सही है।'
+          : 'Wonderful! You remembered beautifully.';
+        setEncouragementNote(enc);
 
-      // Record cog event
-      recordCogEvent({
-        game: activeModule,
-        item: activeModule === 'memory_lane' ? currentPhoto?.name || 'Photo' : currentRoutineQ?.id || 'Routine',
-        correct: true,
-        responseMs,
-        hintUsed: hintUsedRef.current,
-        level: currentLevelData.level,
-        elderLanguage: language,
-      });
+        // Record cog event
+        recordCogEvent({
+          game: activeModule,
+          item: activeModule === 'memory_lane' ? currentPhoto?.name || 'Photo' : currentRoutineQ?.id || 'Routine',
+          correct: true,
+          responseMs,
+          hintUsed: hintUsedRef.current,
+          level: currentLevelData.level,
+          elderLanguage: language,
+        });
 
-      // Voice read caption
-      const captionToRead =
-        activeModule === 'memory_lane'
-          ? (isHindi && currentPhoto?.captionHi ? currentPhoto.captionHi : currentPhoto?.caption) || ''
-          : (isHindi && currentRoutineQ?.explanationHi ? currentRoutineQ.explanationHi : currentRoutineQ?.explanation) || '';
-      if (captionToRead) {
-        speakText(captionToRead);
+        // Voice read caption
+        const captionToRead =
+          activeModule === 'memory_lane'
+            ? (isHindi && currentPhoto?.captionHi ? currentPhoto.captionHi : currentPhoto?.caption) || ''
+            : (isHindi && currentRoutineQ?.explanationHi ? currentRoutineQ.explanationHi : currentRoutineQ?.explanation) || '';
+        if (captionToRead) {
+          speakText(captionToRead);
+        }
+      } else {
+        // Gentle hint without failure or buzzer
+        hintUsedRef.current = true;
+        const hint =
+          activeModule === 'memory_lane'
+            ? isHindi && currentPhoto?.captionHi
+              ? `संकेत: यह ${currentPhoto.name} हैं, जो आपसे बहुत प्यार करते हैं!`
+              : `Gentle clue: It's ${currentPhoto?.name}, your ${currentPhoto?.relationship?.toLowerCase()}!`
+            : isHindi && currentRoutineQ?.hintHi
+            ? currentRoutineQ.hintHi
+            : currentRoutineQ?.hint || 'Hint: Take a quiet breath and look again.';
+        setGentleHintText(hint);
+
+        // Record hint event
+        recordCogEvent({
+          game: activeModule,
+          item: activeModule === 'memory_lane' ? currentPhoto?.name || 'Photo' : currentRoutineQ?.id || 'Routine',
+          correct: false,
+          responseMs,
+          hintUsed: true,
+          level: currentLevelData.level,
+          elderLanguage: language,
+        });
       }
-    } else {
-      // Gentle hint without failure or buzzer
-      hintUsedRef.current = true;
-      const hint =
-        activeModule === 'memory_lane'
-          ? isHindi && currentPhoto?.captionHi
-            ? `संकेत: यह ${currentPhoto.name} हैं, जो आपसे बहुत प्यार करते हैं!`
-            : `Gentle clue: It's ${currentPhoto?.name}, your ${currentPhoto?.relationship?.toLowerCase()}!`
-          : isHindi && currentRoutineQ?.hintHi
-          ? currentRoutineQ.hintHi
-          : currentRoutineQ?.hint || 'Hint: Take a quiet breath and look again.';
-      setGentleHintText(hint);
-
-      // Record hint event
-      recordCogEvent({
-        game: activeModule,
-        item: activeModule === 'memory_lane' ? currentPhoto?.name || 'Photo' : currentRoutineQ?.id || 'Routine',
-        correct: false,
-        responseMs,
-        hintUsed: true,
-        level: currentLevelData.level,
-        elderLanguage: language,
-      });
-    }
-  };
+    },
+    [
+      activeModule,
+      currentLevelData.level,
+      currentPhoto,
+      currentRoutineQ,
+      isAnswerRevealed,
+      isHindi,
+      language,
+      recordCogEvent,
+      speakText,
+    ]
+  );
 
   const handleNextQuestion = () => {
     if (sessionIndex + 1 >= totalQuestionsInSession) {

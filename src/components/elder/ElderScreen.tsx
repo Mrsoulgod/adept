@@ -84,11 +84,11 @@ export const ElderScreen: React.FC = () => {
   const recognitionRef = useRef<any>(null);
 
   // Today's date string
-  const todayStr = new Date().toISOString().split('T')[0];
+  const [todayStr] = useState(() => new Date().toISOString().split('T')[0]);
   const todayLogs = doseLogs.filter((l) => l.date === todayStr);
 
   // Current meal anchor
-  const currentHour = new Date().getHours();
+  const [currentHour] = useState(() => new Date().getHours());
   let currentAnchor: MealAnchor = 'morning_breakfast';
   if (currentHour >= 11 && currentHour < 16) {
     currentAnchor = 'after_lunch';
@@ -97,6 +97,14 @@ export const ElderScreen: React.FC = () => {
   } else if (currentHour >= 21 || currentHour < 6) {
     currentAnchor = 'before_bedtime';
   }
+
+  const [formattedDate] = useState(() =>
+    new Date().toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    })
+  );
 
   // Filter medications for active elder (Dad vs Mom vs Custom Elder)
   const elderMeds = medications.filter((med) =>
@@ -209,51 +217,6 @@ export const ElderScreen: React.FC = () => {
     },
   }[language];
 
-  // Initialize Web Speech Recognition
-  useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript.toLowerCase();
-        setSpeechTranscript(transcript);
-        handleVoiceCommand(transcript);
-        setIsListening(false);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.warn('Speech recognition event:', event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch (e) {
-          // ignore
-        }
-      }
-    };
-  }, [language]);
-
   const handleVoiceCommand = (transcript: string) => {
     const lower = transcript.toLowerCase();
     const isTakenIntent =
@@ -293,6 +256,56 @@ export const ElderScreen: React.FC = () => {
       );
     }
   };
+
+  const handleVoiceCommandRef = useRef(handleVoiceCommand);
+  useEffect(() => {
+    handleVoiceCommandRef.current = handleVoiceCommand;
+  });
+
+  // Initialize Web Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript.toLowerCase();
+        setSpeechTranscript(transcript);
+        handleVoiceCommandRef.current(transcript);
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('Speech recognition event:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [language]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
@@ -346,10 +359,12 @@ export const ElderScreen: React.FC = () => {
   useEffect(() => {
     if (sosCountdown === null) return;
     if (sosCountdown <= 0) {
-      triggerSosWithEscalation(activeElderId);
-      setSosCountdown(null);
-      setSosHoldProgress(0);
-      return;
+      const finishTimer = setTimeout(() => {
+        triggerSosWithEscalation(activeElderId);
+        setSosCountdown(null);
+        setSosHoldProgress(0);
+      }, 0);
+      return () => clearTimeout(finishTimer);
     }
     cancelCountdownRef.current = setTimeout(() => {
       setSosCountdown((prev) => (prev !== null ? prev - 1 : null));
@@ -769,11 +784,7 @@ export const ElderScreen: React.FC = () => {
             {language === 'hi' ? ' जी' : ''}.
           </h1>
           <p className="text-xl text-[#70756F] mt-1 font-medium">
-            {new Date().toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-            })}
+            {formattedDate}
           </p>
         </header>
 

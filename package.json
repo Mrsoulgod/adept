@@ -8,6 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
+    "test:unit": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify": "oxlint && vitest run && tsc -b",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import { useAdept } from '../../context/AdeptContext';
@@ -16,7 +16,7 @@ export const WalkthroughTour: React.FC<WalkthroughTourProps> = ({ forceStart = f
 
   const memberKey = authUser?.id || role;
 
-  const startTour = () => {
+  const startTour = useCallback(() => {
     // 1. ELDER TOUR: Big readable text, one idea per step, Hindi/English
     if (role === 'elder') {
       const isHindi = language === 'hi';
@@ -207,7 +207,7 @@ export const WalkthroughTour: React.FC<WalkthroughTourProps> = ({ forceStart = f
       d.drive();
       return;
     }
-  };
+  }, [role, language, memberKey, onClose]);
 
   // Run automatically on first mount if tour not completed yet, or if forced
   useEffect(() => {
@@ -219,7 +219,7 @@ export const WalkthroughTour: React.FC<WalkthroughTourProps> = ({ forceStart = f
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [forceStart, role, memberKey]);
+  }, [forceStart, memberKey, startTour]);
 
   return (
     <>

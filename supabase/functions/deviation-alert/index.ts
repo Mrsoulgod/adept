@@ -24,11 +24,11 @@ serve(async (req) => {
             Adept Gentle Baseline Check • Warm Amber
           </span>
           <h1 style="color: #92400e; margin-top: 12px; font-size: 22px;">Notice: Routine Window Deviation</h1>
-          <p style="color: #78350f; font-size: 14px; margin: 0;">Arthur Davies • ${mealAnchor}</p>
+          <p style="color: #78350f; font-size: 14px; margin: 0;">${elderName} • ${mealAnchor}</p>
         </div>
 
         <div style="background: #fffbeb; border-radius: 8px; padding: 18px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
-          <p style="margin: 0; font-size: 16px; font-weight: 600; color: #92400e;">Arthur hasn't recorded his morning dose yet</p>
+          <p style="margin: 0; font-size: 16px; font-weight: 600; color: #92400e;">${elderName} hasn't recorded their dose yet (${currentTime})</p>
           <p style="margin: 8px 0 0; color: #78350f; font-size: 14px; line-height: 1.5;">
             The typical window for <strong>${mealAnchor}</strong> (${windowTime}) passed approximately 45 minutes ago without confirmation.
           </p>

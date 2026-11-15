@@ -23,8 +23,6 @@ import {
   computePersonalBaselines,
   classifyDoseBehaviour,
   buildCaretakerTimeline,
-  timeStringToMinutes,
-  minutesToTimeString,
 } from '../src/lib/baseline';
 import {
   predictMedicationStockOut,
@@ -901,6 +899,9 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
         expect(meta.code).toMatch(/^\d{6}$/);
         expect(meta.secondsRemaining).toBeGreaterThan(14 * 60);
         expect(meta.isExpired).toBe(false);
+
+        const activeMeta = getActivePairingCodeMeta();
+        expect(activeMeta.code).toBe(meta.code);
 
         // Pair device with the code
         const pairResult = await pairElderDeviceWithCode(meta.code, "Arthur's Living Room Tablet");
