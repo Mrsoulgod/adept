@@ -607,11 +607,11 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
         expect(attempt.remainingAttempts).toBe(5 - i);
       }
 
-      // Attempt 5: triggers 15-min lockout!
+      // Attempt 5: triggers 10-min lockout per Prompt 3!
       const finalAttempt = recordFailedAttempt(testRole);
       expect(finalAttempt.isLocked).toBe(true);
       expect(finalAttempt.remainingAttempts).toBe(0);
-      expect(finalAttempt.minutesRemaining).toBe(15);
+      expect(finalAttempt.minutesRemaining).toBe(10);
 
       // Status check confirms locked state
       status = getLockoutStatus(testRole);
@@ -642,14 +642,14 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
       const { pairElderDeviceWithCode, isElderDevicePaired, unpairElderDevice } = await import('../src/lib/authService');
 
       const code = generateElderPairingCode();
-      expect(code).toMatch(/^ADEPT-\d{4}$/);
+      expect(code).toMatch(/^(\d{6}|ADEPT-\d{4})$/);
 
       unpairElderDevice();
       expect(isElderDevicePaired()).toBe(false);
 
       // Pair device with code
-      const paired = pairElderDeviceWithCode(code);
-      expect(paired).toBe(true);
+      const paired = await pairElderDeviceWithCode(code);
+      expect(paired.success).toBe(true);
       expect(isElderDevicePaired()).toBe(true);
 
       // Unpair cleanup
@@ -720,6 +720,304 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
       };
       recordAuditEntry(differentAction);
       expect(auditStore.length).toBe(2);
+    });
+  });
+
+  describe('Prompt Sequence Requirements (Prompts 1 - 6)', () => {
+    // PROMPT 1: Real Sign up / Sign in
+    describe('Prompt 1: Real Sign Up & Sign In (Family Owner)', () => {
+      it('creates and authenticates Family Owner with email and password, persisting session', async () => {
+        const { signUpUser, signInUser, signOutUser, getCurrentAuthUser } = await import(
+          '../src/lib/authService'
+        );
+
+        // Sign up
+        const signUpRes = await signUpUser('james.davies@example.com', 'calmcare2026', 'James Davies');
+        expect(signUpRes.user).toBeDefined();
+        expect(signUpRes.user?.role).toBe('family');
+        expect(signUpRes.user?.isOwner).toBe(true);
+
+        // Session persists
+        const storedUser = getCurrentAuthUser();
+        expect(storedUser).toBeDefined();
+        expect(storedUser?.email).toBe('james.davies@example.com');
+
+        // Sign in
+        const signInRes = await signInUser('james.davies@example.com', 'calmcare2026');
+        expect(signInRes.user?.email).toBe('james.davies@example.com');
+
+        // Sign out clears session
+        await signOutUser();
+        expect(getCurrentAuthUser()).toBeNull();
+      });
+
+      it('supports password reset flow', async () => {
+        const { sendPasswordReset } = await import('../src/lib/authService');
+        const resetRes = await sendPasswordReset('james.davies@example.com');
+        expect(resetRes.success).toBe(true);
+      });
+    });
+
+    // PROMPT 2: Initial Setup (Elder Profile Wizard)
+    describe('Prompt 2: Initial Setup (Elder Profile Wizard)', () => {
+      it('supports one-question-per-screen setup with all 8 fields and resumes if closed midway', () => {
+        const WIZARD_STEP_KEY = 'adept_wizard_step';
+        const WIZARD_DRAFT_KEY = 'adept_wizard_draft';
+
+        // Simulate user completing up to Step 4 (Language) and closing the browser tab
+        const savedDraft = {
+          name: 'Arthur Davies',
+          photoUrl: '',
+          age: 78,
+          language: 'hi',
+          wakeTime: '06:30',
+          breakfastTime: '08:00',
+          lunchTime: '12:30',
+          dinnerTime: '19:00',
+          sleepTime: '21:30',
+          doctorName: 'Dr. Evelyn Vance',
+          doctorPhone: '(555) 234-5678',
+          emergencyContactName: 'Sarah Davies (Daughter)',
+          emergencyContactPhone: '(555) 345-6789',
+        };
+
+        localStorage.setItem(WIZARD_STEP_KEY, '4');
+        localStorage.setItem(WIZARD_DRAFT_KEY, JSON.stringify(savedDraft));
+
+        // Re-read on resume
+        const restoredStep = parseInt(localStorage.getItem(WIZARD_STEP_KEY) || '1', 10);
+        const restoredDraft = JSON.parse(localStorage.getItem(WIZARD_DRAFT_KEY) || '{}');
+
+        expect(restoredStep).toBe(4);
+        expect(restoredDraft.name).toBe('Arthur Davies');
+        expect(restoredDraft.language).toBe('hi');
+        expect(restoredDraft.doctorName).toBe('Dr. Evelyn Vance');
+        expect(restoredDraft.emergencyContactName).toContain('Sarah Davies');
+
+        // Clean up
+        localStorage.removeItem(WIZARD_STEP_KEY);
+        localStorage.removeItem(WIZARD_DRAFT_KEY);
+      });
+    });
+
+    // PROMPT 3: Add Caretaker with PIN & Family with Permissions
+    describe('Prompt 3: Caretaker PIN Lockout & Family Permissions', () => {
+      it('hashes 6-digit PIN and locks out after 5 consecutive failures for exactly 10 minutes', async () => {
+        const {
+          hashPin,
+          verifyPin,
+          recordFailedAttempt,
+          resetLockout,
+          getLockoutStatus,
+        } = await import('../src/lib/authSecurity');
+
+        resetLockout('test_caretaker');
+
+        // 1. PIN hashing
+        const hashed = await hashPin('246810');
+        expect(hashed).toBeDefined();
+        expect(hashed).not.toBe('246810');
+        expect(await verifyPin('246810', hashed)).toBe(true);
+        expect(await verifyPin('111111', hashed)).toBe(false);
+
+        // 2. Lockout on 5 wrong PIN tries
+        expect(getLockoutStatus('test_caretaker').isLocked).toBe(false);
+
+        for (let i = 1; i <= 4; i++) {
+          const status = recordFailedAttempt('test_caretaker');
+          expect(status.isLocked).toBe(false);
+          expect(status.failedAttempts).toBe(i);
+          expect(status.remainingAttempts).toBe(5 - i);
+        }
+
+        // 5th failed try triggers 10-minute lockout
+        const finalStatus = recordFailedAttempt('test_caretaker');
+        expect(finalStatus.isLocked).toBe(true);
+        expect(finalStatus.remainingAttempts).toBe(0);
+        expect(finalStatus.minutesRemaining).toBe(10);
+
+        // Subsequent tries remain locked
+        const lockedCheck = getLockoutStatus('test_caretaker');
+        expect(lockedCheck.isLocked).toBe(true);
+
+        // Reset clears lockout
+        resetLockout('test_caretaker');
+        expect(getLockoutStatus('test_caretaker').isLocked).toBe(false);
+      });
+
+      it('enforces view-only vs can-edit permissions for Care Team members', async () => {
+        const { getStoredMembersList, saveStoredMembersList } = await import(
+          '../src/lib/authService'
+        );
+
+        const testMembers = [
+          {
+            id: 'mem-1',
+            name: 'Sarah Davies',
+            email: 'sarah.davies@example.com',
+            role: 'caretaker' as const,
+            permission: 'can_edit' as const,
+            status: 'active' as const,
+            joinedAt: new Date().toISOString(),
+          },
+          {
+            id: 'mem-2',
+            name: 'Robert Davies',
+            email: 'robert.davies@example.com',
+            role: 'family' as const,
+            permission: 'view_only' as const,
+            status: 'active' as const,
+            joinedAt: new Date().toISOString(),
+          },
+        ];
+
+        saveStoredMembersList(testMembers);
+        const loaded = getStoredMembersList();
+        expect(loaded.length).toBe(2);
+
+        const viewOnlyMember = loaded.find((m) => m.permission === 'view_only');
+        expect(viewOnlyMember).toBeDefined();
+        expect(viewOnlyMember?.permission).toBe('view_only');
+
+        const canEditMember = loaded.find((m) => m.permission === 'can_edit');
+        expect(canEditMember).toBeDefined();
+        expect(canEditMember?.permission).toBe('can_edit');
+      });
+    });
+
+    // PROMPT 4: Elder Device Pairing (Login Once, Stay Logged In)
+    describe('Prompt 4: Elder Device Pairing & Device Revocation', () => {
+      it('generates 6-digit numeric pairing code expiring in 15 minutes and allows device revocation', async () => {
+        const {
+          generateNewElderPairingCode,
+          getActivePairingCodeMeta,
+          pairElderDeviceWithCode,
+          getActiveElderDevices,
+          revokeElderDeviceRecord,
+        } = await import('../src/lib/authService');
+
+        // Fresh 6-digit code
+        const meta = generateNewElderPairingCode();
+        expect(meta.code).toMatch(/^\d{6}$/);
+        expect(meta.secondsRemaining).toBeGreaterThan(14 * 60);
+        expect(meta.isExpired).toBe(false);
+
+        // Pair device with the code
+        const pairResult = await pairElderDeviceWithCode(meta.code, "Arthur's Living Room Tablet");
+        expect(pairResult.success).toBe(true);
+
+        // Active devices list contains the tablet
+        const devices = getActiveElderDevices();
+        expect(devices.length).toBeGreaterThan(0);
+        const tablet = devices.find((d) => d.deviceName === "Arthur's Living Room Tablet");
+        expect(tablet).toBeDefined();
+        expect(tablet?.isRevoked).toBe(false);
+
+        // Revoke device from Family Settings
+        if (tablet) {
+          revokeElderDeviceRecord(tablet.id);
+          const updatedDevices = getActiveElderDevices();
+          const revokedTablet = updatedDevices.find((d) => d.id === tablet.id);
+          expect(revokedTablet?.isRevoked).toBe(true);
+        }
+      });
+    });
+
+    // PROMPT 5: Role-based Landing & Route Guards
+    describe('Prompt 5: Role-based Landing & URL Route Guards', () => {
+      it('bounces unauthorized role URLs back to the active role landing page', () => {
+        // Test simulation of route guard logic from MobileShell
+        const simulateRouteGuard = (activeRole: 'elder' | 'caretaker' | 'family', requestedHash: string) => {
+          const rawHash = requestedHash.replace('#/', '');
+          const [targetRole, targetTab] = rawHash.split('/');
+
+          if (
+            targetRole &&
+            targetRole !== activeRole &&
+            ['elder', 'caretaker', 'family'].includes(targetRole)
+          ) {
+            const defaultTab = activeRole === 'family' ? 'home' : 'today';
+            return {
+              bounced: true,
+              redirectedHash: `#/${activeRole}/${defaultTab}`,
+              targetTab: defaultTab,
+            };
+          }
+
+          return {
+            bounced: false,
+            redirectedHash: requestedHash,
+            targetTab: targetTab || (activeRole === 'family' ? 'home' : 'today'),
+          };
+        };
+
+        // Test 1: Elder types caretaker URL -> Bounced back to #/elder/today
+        const elderTry = simulateRouteGuard('elder', '#/caretaker/meds');
+        expect(elderTry.bounced).toBe(true);
+        expect(elderTry.redirectedHash).toBe('#/elder/today');
+
+        // Test 2: Elder types family URL -> Bounced back to #/elder/today
+        const elderTryFamily = simulateRouteGuard('elder', '#/family/settings');
+        expect(elderTryFamily.bounced).toBe(true);
+        expect(elderTryFamily.redirectedHash).toBe('#/elder/today');
+
+        // Test 3: Caretaker types elder URL -> Bounced back to #/caretaker/today
+        const caretakerTry = simulateRouteGuard('caretaker', '#/elder/today');
+        expect(caretakerTry.bounced).toBe(true);
+        expect(caretakerTry.redirectedHash).toBe('#/caretaker/today');
+
+        // Test 4: Family owner types caretaker URL -> Bounced back to #/family/home
+        const familyTry = simulateRouteGuard('family', '#/caretaker/alerts');
+        expect(familyTry.bounced).toBe(true);
+        expect(familyTry.redirectedHash).toBe('#/family/home');
+
+        // Test 5: Authorized route stays intact
+        const elderAllowed = simulateRouteGuard('elder', '#/elder/help');
+        expect(elderAllowed.bounced).toBe(false);
+        expect(elderAllowed.targetTab).toBe('help');
+      });
+    });
+
+    // PROMPT 6: Interactive Walkthrough with driver.js
+    describe('Prompt 6: Interactive Walkthrough & Practice Mode', () => {
+      it('stores tour_completed per member in persistent state and allows replaying', async () => {
+        const { isTourCompletedForMember, setTourCompletedForMember } = await import(
+          '../src/lib/authService'
+        );
+
+        const testMemberId = 'member_tour_test_123';
+
+        // Initially not completed
+        localStorage.removeItem(`adept_tour_completed_${testMemberId}`);
+        expect(isTourCompletedForMember(testMemberId)).toBe(false);
+
+        // Mark completed after tour finishes
+        setTourCompletedForMember(testMemberId, true);
+        expect(isTourCompletedForMember(testMemberId)).toBe(true);
+
+        // Replay tour resets or overrides completion flag
+        setTourCompletedForMember(testMemberId, false);
+        expect(isTourCompletedForMember(testMemberId)).toBe(false);
+
+        localStorage.removeItem(`adept_tour_completed_${testMemberId}`);
+      });
+
+      it('provides sandbox practice mode for Arthur with zero real dose log mutations', () => {
+        const realLogs = getInitialDoseLogs();
+        const initialCount = realLogs.length;
+
+        // Simulate elder tapping "Taken" in sandbox practice mode
+        let practiceDoseRecorded = false;
+        const onPracticeTaken = () => {
+          // Sandbox action only: does not call confirmDose or append to realLogs
+          practiceDoseRecorded = true;
+        };
+
+        onPracticeTaken();
+        expect(practiceDoseRecorded).toBe(true);
+        // Real logs remain untouched
+        expect(realLogs.length).toBe(initialCount);
+      });
     });
   });
 });

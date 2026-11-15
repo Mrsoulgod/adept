@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useAdept } from '../../context/AdeptContext';
-import { ShieldAlert, Check, Stethoscope, AlertOctagon, Undo2 } from 'lucide-react';
+import { ShieldAlert, Check, Stethoscope, AlertOctagon, Undo2, Play, Pill } from 'lucide-react';
+import { PracticeModeModal } from '../walkthrough/WalkthroughTour';
 
 export const ElderHelpTab: React.FC = () => {
-  const { profile, auditLogs, elderVetoAction, elderApproveAuditAction } = useAdept();
+  const { profile, auditLogs, elderVetoAction, elderApproveAuditAction, startWalkthroughTour, language } = useAdept();
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [practiceModalOpen, setPracticeModalOpen] = useState(false);
 
   // Filter actions that Arthur can review/veto
   const vetoableItems = auditLogs.filter((a) => a.canElderVeto);
@@ -88,6 +90,56 @@ export const ElderHelpTab: React.FC = () => {
         </a>
       </div>
 
+      {/* App Walkthrough & Hands-on Practice Mode (Prompt 6) */}
+      <div className="bg-white border-2 border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold">
+              <Play className="w-5 h-5 fill-current" />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-slate-900">
+                {language === 'hi' ? 'ऐप का परिचय और अभ्यास' : 'App Tour & Practice'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {language === 'hi' ? 'सीखें या सुरक्षित रूप से अभ्यास करें' : 'Learn or practice safely'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold bg-purple-100 text-purple-900 px-2.5 py-0.5 rounded-full">
+            Prompt 6
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {language === 'hi'
+            ? 'अपनी गति से ऐप को समझें। अभ्यास मोड में "Taken" बटन दबाकर देखें — यह कोई असली रिकॉर्ड नहीं बदलेगा।'
+            : 'Explore Adept at your own pace. Practice tapping "Taken" in a safe sandbox with zero risk to your real records.'}
+        </p>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          {/* Practice Mode Button */}
+          <button
+            type="button"
+            onClick={() => setPracticeModalOpen(true)}
+            className="h-12 bg-emerald-50 hover:bg-emerald-100 text-[#064e3b] border border-emerald-300 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
+          >
+            <Pill className="w-4 h-4 text-[#064e3b]" />
+            <span>{language === 'hi' ? 'दवा अभ्यास करें' : 'Practice Mode'}</span>
+          </button>
+
+          {/* Replay Tour Button */}
+          <button
+            type="button"
+            onClick={startWalkthroughTour}
+            className="h-12 bg-white hover:bg-purple-50 text-purple-950 border-2 border-purple-200 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
+          >
+            <Play className="w-3.5 h-3.5 fill-current text-purple-700" />
+            <span>{language === 'hi' ? 'टूर फिर देखें' : 'Replay Tour'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* Elder Veto Section (Hero Law: Elder is centre of decisions) */}
       <div className="space-y-3 pt-2">
         <div className="flex items-center justify-between">
@@ -166,6 +218,13 @@ export const ElderHelpTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Practice Mode Safe Sandbox Modal */}
+      <PracticeModeModal
+        isOpen={practiceModalOpen}
+        onClose={() => setPracticeModalOpen(false)}
+        language={language}
+      />
     </div>
   );
 };

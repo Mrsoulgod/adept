@@ -6,7 +6,7 @@ interface LogoHeaderProps {
 }
 
 export const LogoHeader: React.FC<LogoHeaderProps> = ({ onTriggerDemo }) => {
-  const { role, profile } = useAdept();
+  const { role, profile, authUser } = useAdept();
   const [isPressing, setIsPressing] = useState(false);
   const pressTimer = useRef<any>(null);
 
@@ -27,9 +27,9 @@ export const LogoHeader: React.FC<LogoHeaderProps> = ({ onTriggerDemo }) => {
   };
 
   const getRoleLabel = () => {
-    if (role === 'elder') return `${profile.name} (78)`;
-    if (role === 'caretaker') return `${profile.caretakerName || 'Sarah'} (Caretaker)`;
-    return 'Family Coordinator';
+    if (role === 'elder') return `${profile.name || 'Arthur Davies'} • Elder`;
+    if (role === 'caretaker') return `${authUser?.name || profile.caretakerName || 'Sarah Davies'} • Caretaker`;
+    return `${authUser?.name || 'James Davies'} • Family Owner`;
   };
 
   return (

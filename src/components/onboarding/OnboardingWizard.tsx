@@ -9,7 +9,7 @@ interface OnboardingWizardProps {
 }
 
 export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, onTriggerDemo }) => {
-  const { completeOnboarding, elderPairingCode } = useAdept();
+  const { saveElderProfileAndCircle, elderPairingCode } = useAdept();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
@@ -54,16 +54,19 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, 
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await completeOnboarding({
-        elderName: elderName.trim() || 'Arthur Davies',
-        elderAge: Number(elderAge) || 78,
+      await saveElderProfileAndCircle({
+        name: elderName.trim() || 'Arthur Davies',
+        age: Number(elderAge) || 78,
+        language: 'en',
+        wakeTime: '07:00',
+        breakfastTime: '08:30',
+        lunchTime: '13:00',
+        dinnerTime: '19:30',
+        sleepTime: '22:00',
         doctorName: doctorName.trim() || 'Dr. Evelyn Vance',
         doctorPhone: doctorPhone.trim() || '(555) 234-5678',
-        conditions: conditions.split(',').map((c) => c.trim()).filter(Boolean),
-        caretakerName: caretakerName.trim() || 'Sarah Davies',
-        caretakerEmail: caretakerEmail.trim() || 'sarah.davies@example.com',
-        caretakerPin: caretakerPin.trim() || '246810',
-        familyEmail: familyEmail.trim() || 'james.davies@example.com',
+        emergencyContactName: caretakerName.trim() || 'Sarah Davies',
+        emergencyContactPhone: '(555) 345-6789',
       });
       setStep(4);
     } finally {

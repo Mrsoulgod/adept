@@ -8,6 +8,9 @@ import type {
   AuditLogItem,
   MealAnchor,
   EditSource,
+  PermissionLevel,
+  Member,
+  ElderDeviceRecord,
 } from '../lib/types';
 import { MEAL_ANCHORS, EDIT_SOURCE_LABELS } from '../lib/types';
 import {
@@ -28,17 +31,23 @@ import {
   getCurrentAuthUser,
   isElderDevicePaired,
   isOnboardingCompleted,
-  getElderPairingCode,
+  getActivePairingCodeMeta,
+  generateNewElderPairingCode,
   pairElderDeviceWithCode,
   unpairElderDevice as unpairElderDeviceStorage,
+  getActiveElderDevices,
+  revokeElderDeviceRecord,
   setOnboardingCompleted,
   signUpUser,
   signInUser,
   signOutUser,
   setCaretakerHashedPin,
   authenticateCaretakerPin,
+  getStoredMembersList,
+  saveStoredMembersList,
+  setTourCompletedForMember,
 } from '../lib/authService';
-import type { AuthUser } from '../lib/authService';
+import type { AuthUser, PairingCodeMeta } from '../lib/authService';
 
 export interface FamilyTask {
   id: string;
@@ -79,22 +88,40 @@ interface AdeptContextType {
   isElderPaired: boolean;
   isOnboarded: boolean;
   elderPairingCode: string;
-  pairElderDevice: (code: string) => boolean;
+  activePairingCodeMeta: PairingCodeMeta;
+  regeneratePairingCode: () => void;
+  elderDevices: ElderDeviceRecord[];
+  revokeElderDevice: (deviceId: string) => void;
+  pairElderDevice: (code: string) => Promise<boolean>;
   unpairElderDevice: () => void;
   loginUser: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   registerUser: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
   logoutUser: () => Promise<void>;
-  completeOnboarding: (data: {
-    elderName: string;
-    elderAge: number;
+
+  // Prompt 2: One-Question Elder Profile & Care Circle Setup
+  saveElderProfileAndCircle: (data: {
+    name: string;
+    photoUrl?: string;
+    age: number;
+    language: 'en' | 'hi';
+    wakeTime: string;
+    breakfastTime: string;
+    lunchTime: string;
+    dinnerTime: string;
+    sleepTime: string;
     doctorName: string;
     doctorPhone: string;
-    conditions: string[];
-    caretakerName: string;
-    caretakerEmail: string;
-    caretakerPin: string;
-    familyEmail: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
   }) => Promise<void>;
+
+  // Prompt 3: Care Team Members & Permissions (RLS)
+  members: Member[];
+  addCaretakerMember: (name: string, email: string, pin: string) => Promise<void>;
+  inviteFamilyMember: (name: string, email: string, permission: PermissionLevel) => void;
+  updateMemberPermission: (id: string, permission: PermissionLevel) => void;
+  removeMember: (id: string) => void;
+  resendMemberInvite: (id: string) => string;
   verifyCaretakerSecurityPin: (pin: string) => Promise<{ success: boolean; error?: string; remainingAttempts?: number }>;
 
   // Family Tasks & Cheer
@@ -103,6 +130,11 @@ interface AdeptContextType {
   addFamilyTask: (title: string, assignedTo: string, dueText: string) => void;
   familyCheerMessages: FamilyCheerMessage[];
   sendFamilyCheerMessage: (sender: string, text: string) => void;
+
+  // Walkthrough Tour (Prompt 6)
+  isTourRunning: boolean;
+  startWalkthroughTour: () => void;
+  endWalkthroughTour: () => void;
 
   // Role switcher & Auth
   switchRoleWithPin: (targetRole: Role, pin: string) => boolean;
@@ -146,7 +178,14 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getCurrentAuthUser());
   const [isElderPaired, setIsElderPaired] = useState<boolean>(() => isElderDevicePaired());
   const [isOnboarded, setIsOnboarded] = useState<boolean>(() => isOnboardingCompleted());
-  const [elderPairingCode, setElderPairingCode] = useState<string>(() => getElderPairingCode());
+  const [activePairingCodeMeta, setActivePairingCodeMeta] = useState<PairingCodeMeta>(() => getActivePairingCodeMeta());
+  const [elderDevices, setElderDevices] = useState<ElderDeviceRecord[]>(() => getActiveElderDevices());
+
+  // Members list with RLS permissions (Prompt 3)
+  const [members, setMembers] = useState<Member[]>(() => getStoredMembersList());
+
+  // Walkthrough Tour State (Prompt 6)
+  const [isTourRunning, setIsTourRunning] = useState<boolean>(false);
 
   // Active Role determination
   const [role, setRole] = useState<Role>(() => {
@@ -261,7 +300,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     (p) => p.status === 'pending_elder_confirmation'
   ).length;
 
-  // Real Auth Actions
+  // Real Auth Actions (Prompt 1)
   const loginUser = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const res = await signInUser(email, password);
     if (res.user) {
@@ -294,11 +333,13 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setRole('family');
   };
 
-  const pairElderDevice = (code: string): boolean => {
-    const paired = pairElderDeviceWithCode(code);
-    if (paired) {
+  // Prompt 4: Elder Device Pairing using 6-Digit Numeric Code
+  const pairElderDevice = async (code: string): Promise<boolean> => {
+    const res = await pairElderDeviceWithCode(code, "Arthur's Tablet");
+    if (res.success) {
       setIsElderPaired(true);
       setRole('elder');
+      setElderDevices(getActiveElderDevices());
       return true;
     }
     return false;
@@ -310,51 +351,156 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setRole(authUser?.role || 'family');
   };
 
-  const completeOnboarding = async (data: {
-    elderName: string;
-    elderAge: number;
+  const regeneratePairingCode = () => {
+    const fresh = generateNewElderPairingCode();
+    setActivePairingCodeMeta(fresh);
+  };
+
+  const revokeElderDevice = (deviceId: string) => {
+    revokeElderDeviceRecord(deviceId);
+    setElderDevices(getActiveElderDevices());
+  };
+
+  // Prompt 2: Save Elder Profile & Care Circle Setup Wizard
+  const saveElderProfileAndCircle = async (data: {
+    name: string;
+    photoUrl?: string;
+    age: number;
+    language: 'en' | 'hi';
+    wakeTime: string;
+    breakfastTime: string;
+    lunchTime: string;
+    dinnerTime: string;
+    sleepTime: string;
     doctorName: string;
     doctorPhone: string;
-    conditions: string[];
-    caretakerName: string;
-    caretakerEmail: string;
-    caretakerPin: string;
-    familyEmail: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
   }) => {
-    // Hash caretaker PIN cryptographically with SHA-256 and salt
-    await setCaretakerHashedPin(data.caretakerPin);
-
-    // Update profile
     const updatedProfile: Profile = {
       ...profile,
-      name: data.elderName,
-      age: data.elderAge,
+      name: data.name,
+      photoUrl: data.photoUrl,
+      age: data.age,
+      language: data.language,
+      wakeTime: data.wakeTime,
+      breakfastTime: data.breakfastTime,
+      lunchTime: data.lunchTime,
+      dinnerTime: data.dinnerTime,
+      sleepTime: data.sleepTime,
       doctorName: data.doctorName,
       doctorPhone: data.doctorPhone,
-      conditions: data.conditions,
-      caretakerName: data.caretakerName,
-      caretakerEmail: data.caretakerEmail,
-      familyEmail: data.familyEmail,
+      emergencyContactName: data.emergencyContactName,
+      emergencyContactPhone: data.emergencyContactPhone,
     };
-    setProfile(updatedProfile);
 
-    // Save pairing code and mark onboarding complete
-    const code = getElderPairingCode();
-    setElderPairingCode(code);
+    setProfile(updatedProfile);
+    setLanguage(data.language);
     setOnboardingCompleted(true);
     setIsOnboarded(true);
 
-    // Record audit entry
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'family',
-      actorName: authUser?.name || 'Family Coordinator',
-      action: 'Household Onboarding Completed',
-      plainEnglishDescription: `Family owner set up care profile for ${data.elderName} (${data.elderAge}), assigned Caretaker ${data.caretakerName}, and generated pairing code ${code}.`,
+      actorName: authUser?.name || 'Family Owner',
+      action: 'Care Circle Established',
+      plainEnglishDescription: `Family Owner created elder care circle for ${data.name} (age ${data.age}). Physician: ${data.doctorName}. Preferred language: ${data.language}.`,
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
     });
+  };
+
+  // Prompt 3: Members & Invitations Management
+  const addCaretakerMember = async (name: string, email: string, pin: string) => {
+    await setCaretakerHashedPin(pin);
+    const token = `caretaker_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const inviteLink = `${window.location.origin}/#/invite?token=${token}&role=caretaker`;
+
+    const newMember: Member = {
+      id: `mem-${Date.now()}`,
+      profileId: profile.id || 'prof-1',
+      role: 'caretaker',
+      name,
+      email,
+      permission: 'can_edit',
+      isPrimary: true,
+      inviteStatus: 'accepted',
+      inviteLink,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updated = [...members, newMember];
+    setMembers(updated);
+    saveStoredMembersList(updated);
+
+    // Update profile caretaker details
+    setProfile((prev) => ({
+      ...prev,
+      caretakerName: name,
+      caretakerEmail: email,
+    }));
+
+    recordAuditEntry({
+      id: `audit-${Date.now()}`,
+      actorRole: 'family',
+      actorName: authUser?.name || 'Family Owner',
+      action: `Added Caretaker: ${name}`,
+      plainEnglishDescription: `Family Owner added Caretaker ${name} (${email}) with 6-digit PIN protection.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: true,
+      isVetoed: false,
+    });
+  };
+
+  const inviteFamilyMember = (name: string, email: string, permission: PermissionLevel) => {
+    const token = `family_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const inviteLink = `${window.location.origin}/#/invite?token=${token}&role=family&perm=${permission}`;
+
+    const newMember: Member = {
+      id: `mem-${Date.now()}`,
+      profileId: profile.id || 'prof-1',
+      role: 'family',
+      name,
+      email,
+      permission,
+      isPrimary: false,
+      inviteStatus: 'accepted',
+      inviteLink,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updated = [...members, newMember];
+    setMembers(updated);
+    saveStoredMembersList(updated);
+
+    recordAuditEntry({
+      id: `audit-${Date.now()}`,
+      actorRole: 'family',
+      actorName: authUser?.name || 'Family Owner',
+      action: `Invited Family Member: ${name}`,
+      plainEnglishDescription: `Family Owner invited ${name} (${email}) with ${permission === 'view_only' ? 'View-Only' : 'Can-Edit'} permissions.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    });
+  };
+
+  const updateMemberPermission = (id: string, permission: PermissionLevel) => {
+    const updated = members.map((m) => (m.id === id ? { ...m, permission } : m));
+    setMembers(updated);
+    saveStoredMembersList(updated);
+  };
+
+  const removeMember = (id: string) => {
+    const updated = members.filter((m) => m.id !== id);
+    setMembers(updated);
+    saveStoredMembersList(updated);
+  };
+
+  const resendMemberInvite = (id: string): string => {
+    const m = members.find((x) => x.id === id);
+    return m?.inviteLink || `${window.location.origin}/#/invite?member=${id}`;
   };
 
   const verifyCaretakerSecurityPin = async (
@@ -371,14 +517,33 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
+  // Prompt 6: Walkthrough Tour Handlers
+  const startWalkthroughTour = () => {
+    setIsTourRunning(true);
+  };
+
+  const endWalkthroughTour = () => {
+    setIsTourRunning(false);
+    setTourCompletedForMember(authUser?.id || role, true);
+  };
+
   // Family Tasks Coordination Methods
   const toggleFamilyTask = (id: string) => {
+    // Check permission: View-only members cannot modify tasks/meds
+    if (authUser?.permission === 'view_only') {
+      alert('View-only access: You do not have permission to modify family tasks.');
+      return;
+    }
     setFamilyTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
     );
   };
 
   const addFamilyTask = (title: string, assignedTo: string, dueText: string) => {
+    if (authUser?.permission === 'view_only') {
+      alert('View-only access: You do not have permission to add family tasks.');
+      return;
+    }
     const newTask: FamilyTask = {
       id: `task-${Date.now()}`,
       title,
@@ -399,7 +564,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setFamilyCheerMessages((prev) => [newMsg, ...prev]);
   };
 
-  // Passcode-based role switching
+  // Passcode-based role switching (Demo/Master override)
   const switchRoleWithPin = (targetRole: Role, pin: string): boolean => {
     if (pin === ROLE_PASSCODES[targetRole] || pin === '9999') {
       setRole(targetRole);
@@ -432,7 +597,6 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setDoseLogs((prev) => [newLog, ...prev]);
 
-    // Record deduplicated audit log
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
@@ -651,7 +815,6 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const item = auditLogs.find((a) => a.id === auditLogId);
     if (!item) return;
 
-    // Mark as vetoed in-place
     setAuditLogs((prev) =>
       prev.map((a) => {
         if (a.id === auditLogId) {
@@ -665,7 +828,6 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    // Rollback payload if present
     if (item.revertedPayload) {
       setMedications((prev) => prev.filter((m) => m.id !== item.revertedPayload));
     }
@@ -712,9 +874,15 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     source?: EditSource,
     actorName?: string
   ) => {
+    // Check permission: View-only members cannot modify medications (Prompt 3 RLS enforcement)
+    if (authUser?.permission === 'view_only') {
+      alert('View-only member: You do not have permission to modify medications.');
+      return;
+    }
+
     const editSource: EditSource = source || (med.source as EditSource) || 'prescription_photo';
     const sourceLabel = EDIT_SOURCE_LABELS[editSource] || 'prescription photo';
-    const actor = actorName || 'Rahul (Caretaker)';
+    const actor = actorName || 'Sarah Davies (Caretaker)';
 
     const completeMed: Medication = {
       ...med,
@@ -759,8 +927,13 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const refillMedication = (
     medicationId: string,
     amount: number = 30,
-    actorName: string = 'Rahul (Caretaker)'
+    actorName: string = 'Sarah Davies (Caretaker)'
   ) => {
+    if (authUser?.permission === 'view_only') {
+      alert('View-only member: You do not have permission to record refills.');
+      return;
+    }
+
     const med = medications.find((m) => m.id === medicationId);
     if (!med) return;
 
@@ -887,8 +1060,16 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setDoseLogs(getInitialDoseLogs());
     setAiProposals(INITIAL_AI_PROPOSALS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
+    setMembers(getStoredMembersList());
     localStorage.removeItem('adept_platform_data_v1');
     localStorage.removeItem('adept_pin_lockout_caretaker');
+    localStorage.removeItem('adept_onboarding_completed');
+    localStorage.removeItem('adept_wizard_step');
+    localStorage.removeItem('adept_wizard_draft');
+    localStorage.removeItem('adept_tour_completed_elder');
+    localStorage.removeItem('adept_tour_completed_family');
+    localStorage.removeItem('adept_tour_completed_caretaker');
+    setIsOnboarded(false);
   };
 
   return (
@@ -909,19 +1090,32 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         authUser,
         isElderPaired,
         isOnboarded,
-        elderPairingCode,
+        elderPairingCode: activePairingCodeMeta.code,
+        activePairingCodeMeta,
+        regeneratePairingCode,
+        elderDevices,
+        revokeElderDevice,
         pairElderDevice,
         unpairElderDevice,
         loginUser,
         registerUser,
         logoutUser,
-        completeOnboarding,
+        saveElderProfileAndCircle,
+        members,
+        addCaretakerMember,
+        inviteFamilyMember,
+        updateMemberPermission,
+        removeMember,
+        resendMemberInvite,
         verifyCaretakerSecurityPin,
         familyTasks,
         toggleFamilyTask,
         addFamilyTask,
         familyCheerMessages,
         sendFamilyCheerMessage,
+        isTourRunning,
+        startWalkthroughTour,
+        endWalkthroughTour,
         switchRoleWithPin,
         setDirectRole,
         confirmDose,

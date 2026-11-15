@@ -20,7 +20,7 @@ export const CaretakerTodayTab: React.FC = () => {
   return (
     <div className="px-4 py-5 space-y-5 font-sans">
       {/* Title & Care Routine Header */}
-      <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-3">
+      <div id="caretaker-today-header" className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
             Care Coordinator • Sarah Davies
@@ -68,7 +68,7 @@ export const CaretakerTodayTab: React.FC = () => {
       )}
 
       {/* Baseline Deviation View & Timeline with "normal for Dad" labels */}
-      <div className="space-y-3">
+      <div id="caretaker-timeline-section" className="space-y-3">
         <BaselineDeviationView onOpenDigest={() => setDigestOpen(true)} />
       </div>
 

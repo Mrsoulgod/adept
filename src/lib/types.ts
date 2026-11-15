@@ -57,13 +57,24 @@ export const MEAL_ANCHORS: Record<MealAnchor, MealAnchorConfig> = {
   },
 };
 
+export type PermissionLevel = 'view_only' | 'can_edit';
+
 export interface Profile {
   id: string;
   name: string;
   age: number;
   role: Role;
+  photoUrl?: string;
+  language?: 'en' | 'hi';
+  wakeTime?: string;
+  breakfastTime?: string;
+  lunchTime?: string;
+  dinnerTime?: string;
+  sleepTime?: string;
   doctorName: string;
   doctorPhone: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
   caretakerName: string;
   caretakerPhone: string;
   caretakerEmail: string;
@@ -76,11 +87,27 @@ export interface Profile {
 export interface Member {
   id: string;
   profileId: string;
+  userId?: string;
   role: Role;
   name: string;
   email?: string;
   phone?: string;
+  permission?: PermissionLevel;
+  tourCompleted?: boolean;
+  inviteStatus?: 'pending' | 'accepted';
+  inviteLink?: string;
   isPrimary: boolean;
+  createdAt: string;
+}
+
+export interface ElderDeviceRecord {
+  id: string;
+  profileId: string;
+  code: string;
+  deviceName: string;
+  expiresAt: string;
+  claimedAt?: string;
+  isRevoked: boolean;
   createdAt: string;
 }
 

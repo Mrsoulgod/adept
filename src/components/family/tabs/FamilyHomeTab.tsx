@@ -13,7 +13,7 @@ export const FamilyHomeTab: React.FC = () => {
   return (
     <div className="px-4 py-5 space-y-5 font-sans">
       {/* Calm Reassurance Banner (Hero Law: Calm by default) */}
-      <div className="bg-[#064e3b] text-white rounded-3xl p-6 shadow-md space-y-3">
+      <div id="family-reassurance-card" className="bg-[#064e3b] text-white rounded-3xl p-6 shadow-md space-y-3">
         <div className="inline-flex items-center gap-1.5 bg-emerald-800/90 border border-emerald-400/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-emerald-200">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
           <span>Peace of Mind</span>

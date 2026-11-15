@@ -4,7 +4,7 @@
 
 const LOCKOUT_KEY_PREFIX = 'adept_pin_lockout_';
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes lockout
+const LOCKOUT_DURATION_MS = 10 * 60 * 1000; // 10 minutes lockout per Prompt 3 requirement
 
 /**
  * Computes SHA-256 hash of a 6-digit PIN.
@@ -110,7 +110,7 @@ export function recordFailedAttempt(memberIdOrRole: string = 'caretaker'): Locko
       failedAttempts: newFailed,
       remainingAttempts: 0,
       lockedUntil,
-      minutesRemaining: 15,
+      minutesRemaining: 10,
     };
   }
 
@@ -135,9 +135,22 @@ export function resetLockout(memberIdOrRole: string = 'caretaker'): void {
 }
 
 /**
- * Generates an elder pairing code: e.g. "ADEPT-7890"
+ * Generates an elder 6-digit numeric pairing code (expires in 15 minutes per Prompt 4).
+ */
+export function generate6DigitPairingCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/**
+ * Legacy elder pairing code (e.g. "ADEPT-7890" or 6 digits)
  */
 export function generateElderPairingCode(): string {
-  const randomDigits = Math.floor(1000 + Math.random() * 9000);
-  return `ADEPT-${randomDigits}`;
+  const code = generate6DigitPairingCode();
+  try {
+    localStorage.setItem('adept_elder_pairing_code', code);
+    localStorage.setItem('adept_elder_pairing_expiry', (Date.now() + 15 * 60 * 1000).toString());
+  } catch {
+    // ignore
+  }
+  return code;
 }

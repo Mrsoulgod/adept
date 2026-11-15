@@ -18,15 +18,24 @@ DROP TABLE IF EXISTS public.members CASCADE;
 DROP TABLE IF EXISTS public.profiles CASCADE;
 
 -- ---------------------------------------------------------------------
--- 1. PROFILES (Household / Elder Anchor)
+-- 1. PROFILES (Household / Care Circle / Elder Anchor)
 -- ---------------------------------------------------------------------
 CREATE TABLE public.profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     age INT NOT NULL,
+    photo_url TEXT,
+    language TEXT DEFAULT 'en' CHECK (language IN ('en', 'hi')),
+    wake_time TIME DEFAULT '07:00',
+    breakfast_time TIME DEFAULT '08:30',
+    lunch_time TIME DEFAULT '13:00',
+    dinner_time TIME DEFAULT '19:30',
+    sleep_time TIME DEFAULT '22:00',
     doctor_name TEXT NOT NULL,
     doctor_phone TEXT,
-    household_passcode_hash TEXT NOT NULL, -- Used once by Elder for perpetual login
+    emergency_contact_name TEXT,
+    emergency_contact_phone TEXT,
+    household_passcode_hash TEXT NOT NULL DEFAULT 'default_hash', -- Used for legacy passcode
     conditions TEXT[] DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -38,12 +47,34 @@ CREATE TABLE public.profiles (
 CREATE TABLE public.members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     role TEXT NOT NULL CHECK (role IN ('elder', 'caretaker', 'family')),
     name TEXT NOT NULL,
     email TEXT,
     phone TEXT,
-    passcode_hash TEXT NOT NULL, -- PIN (e.g., '1111' elder, '2222' caretaker, '3333' family)
+    passcode_hash TEXT NOT NULL DEFAULT 'default_hash', -- PIN (hashed SHA-256 for caretaker)
+    permission TEXT DEFAULT 'can_edit' CHECK (permission IN ('view_only', 'can_edit')),
     is_primary BOOLEAN DEFAULT FALSE,
+    tour_completed BOOLEAN DEFAULT FALSE,
+    failed_pin_attempts INT DEFAULT 0,
+    pin_locked_until TIMESTAMPTZ,
+    invite_token TEXT UNIQUE,
+    invite_status TEXT DEFAULT 'accepted' CHECK (invite_status IN ('pending', 'accepted')),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ---------------------------------------------------------------------
+-- 2b. ELDER PAIRING CODES (6-digit numeric, 15-min expiry, anonymous claim)
+-- ---------------------------------------------------------------------
+CREATE TABLE public.elder_pairing_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    code VARCHAR(6) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes'),
+    claimed_by_anon_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    claimed_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    device_name TEXT DEFAULT 'Elder Device',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -190,7 +221,7 @@ CREATE POLICY "Elder veto update on audit_log"
 -- STORED PROCEDURES & AUTH FLOW FUNCTIONS
 -- =====================================================================
 
--- A. Verify Member Passcode (Used whenever Caretaker or Family attempts an edit)
+-- A. Verify Member Passcode & 10-Minute Lockout Defense
 CREATE OR REPLACE FUNCTION public.verify_member_passcode(
     p_profile_id UUID,
     p_role TEXT,
@@ -199,15 +230,97 @@ CREATE OR REPLACE FUNCTION public.verify_member_passcode(
 RETURNS BOOLEAN AS $$
 DECLARE
     v_match BOOLEAN;
+    v_locked_until TIMESTAMPTZ;
+    v_failed_attempts INT;
 BEGIN
-    SELECT (passcode_hash = crypt(p_passcode, passcode_hash) OR passcode_hash = p_passcode)
-    INTO v_match
+    SELECT pin_locked_until, failed_pin_attempts,
+           (passcode_hash = crypt(p_passcode, passcode_hash) OR passcode_hash = p_passcode)
+    INTO v_locked_until, v_failed_attempts, v_match
     FROM public.members
     WHERE profile_id = p_profile_id
       AND role = p_role
     LIMIT 1;
 
-    RETURN COALESCE(v_match, false);
+    -- Check if locked out
+    IF v_locked_until IS NOT NULL AND v_locked_until > NOW() THEN
+        RAISE EXCEPTION 'Security Lockout: Account locked for 10 minutes due to 5 failed attempts.';
+    END IF;
+
+    IF v_match = TRUE THEN
+        -- Reset failed attempts on success
+        UPDATE public.members
+        SET failed_pin_attempts = 0, pin_locked_until = NULL
+        WHERE profile_id = p_profile_id AND role = p_role;
+        RETURN TRUE;
+    ELSE
+        -- Increment failure count, trigger 10-min lockout after 5 fails
+        UPDATE public.members
+        SET failed_pin_attempts = COALESCE(failed_pin_attempts, 0) + 1,
+            pin_locked_until = CASE WHEN COALESCE(failed_pin_attempts, 0) + 1 >= 5 THEN NOW() + INTERVAL '10 minutes' ELSE NULL END
+        WHERE profile_id = p_profile_id AND role = p_role;
+        RETURN FALSE;
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- A2. Claim Elder Device using 6-Digit Pairing Code (Anonymous Supabase Auth)
+CREATE OR REPLACE FUNCTION public.claim_elder_device(
+    p_code TEXT,
+    p_device_name TEXT DEFAULT 'Elder Device'
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_code_rec RECORD;
+    v_elder_member RECORD;
+BEGIN
+    -- Verify code exists, not expired, not revoked
+    SELECT * INTO v_code_rec
+    FROM public.elder_pairing_codes
+    WHERE code = p_code
+      AND expires_at > NOW()
+      AND revoked_at IS NULL
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    IF v_code_rec.id IS NULL THEN
+        RAISE EXCEPTION 'Invalid or expired pairing code. Please generate a new code from Family settings.';
+    END IF;
+
+    -- Claim for current anonymous auth user
+    UPDATE public.elder_pairing_codes
+    SET claimed_by_anon_user_id = auth.uid(),
+        claimed_at = NOW(),
+        device_name = COALESCE(p_device_name, 'Elder Tablet')
+    WHERE id = v_code_rec.id;
+
+    -- Retrieve elder member record
+    SELECT * INTO v_elder_member
+    FROM public.members
+    WHERE profile_id = v_code_rec.profile_id
+      AND role = 'elder'
+    LIMIT 1;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'profile_id', v_code_rec.profile_id,
+        'elder_member_id', v_elder_member.id,
+        'elder_name', v_elder_member.name,
+        'device_name', v_code_rec.device_name
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- A3. Revoke Elder Device (Family can revoke devices from Settings)
+CREATE OR REPLACE FUNCTION public.revoke_elder_device(
+    p_device_id UUID
+)
+RETURNS JSONB AS $$
+BEGIN
+    UPDATE public.elder_pairing_codes
+    SET revoked_at = NOW()
+    WHERE id = p_device_id;
+
+    RETURN jsonb_build_object('success', true, 'revoked_id', p_device_id);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

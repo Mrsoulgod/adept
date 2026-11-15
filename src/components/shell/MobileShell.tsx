@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAdept } from '../../context/AdeptContext';
 import { LogoHeader } from '../shared/LogoHeader';
 import { DemoModeModal } from '../shared/DemoModeModal';
+import { WalkthroughTour } from '../walkthrough/WalkthroughTour';
+import { ShieldAlert } from 'lucide-react';
 
 // Elder Views
 import { ElderScreen } from '../elder/ElderScreen';
@@ -45,32 +47,81 @@ export const MobileShell: React.FC<MobileShellProps> = ({
   onOpenSettings,
   onStartOnboardingTest,
 }) => {
-  const { role } = useAdept();
+  const { role, isTourRunning, endWalkthroughTour } = useAdept();
   const [demoModalOpen, setDemoModalOpen] = useState(false);
+  const [bounceNotice, setBounceNotice] = useState<string | null>(null);
 
   // Tab State per role: each tab is its own distinct route/view, NOT one long scroll!
   const [elderTab, setElderTab] = useState<'today' | 'family' | 'help'>('today');
   const [caretakerTab, setCaretakerTab] = useState<'today' | 'meds' | 'log' | 'alerts'>('today');
   const [familyTab, setFamilyTab] = useState<'home' | 'team' | 'tasks' | 'settings'>('home');
 
-  // URL Hash routing synchronization
+  // Prompt 5 Route Guard: Enforce role-based URLs and bounce back unauthorized attempts
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#/', '');
-      const [r, t] = hash.split('/');
-      if (r === 'elder' && (t === 'today' || t === 'family' || t === 'help')) {
-        setElderTab(t as any);
-      } else if (r === 'caretaker' && (t === 'today' || t === 'meds' || t === 'log' || t === 'alerts')) {
-        setCaretakerTab(t as any);
-      } else if (r === 'family' && (t === 'home' || t === 'team' || t === 'tasks' || t === 'settings')) {
-        setFamilyTab(t as any);
+    const enforceRouteGuard = () => {
+      const rawHash = window.location.hash.replace('#/', '');
+      const [targetRole, targetTab] = rawHash.split('/');
+
+      // 1. If user attempts to open another role's URL, bounce back immediately!
+      if (
+        targetRole &&
+        targetRole !== role &&
+        (targetRole === 'elder' || targetRole === 'caretaker' || targetRole === 'family')
+      ) {
+        const defaultTab = role === 'family' ? 'home' : 'today';
+        window.location.hash = `#/${role}/${defaultTab}`;
+        const roleLabel =
+          role === 'elder' ? 'Elder' : role === 'caretaker' ? 'Caretaker' : 'Family Owner';
+        setBounceNotice(`Access restricted: As ${roleLabel}, you were redirected from /${targetRole} to your ${defaultTab} screen.`);
+        setTimeout(() => setBounceNotice(null), 4000);
+        return;
+      }
+
+      // 2. If on authorized role's routes, sync tab state
+      if (targetRole === role) {
+        if (role === 'elder') {
+          if (targetTab === 'today' || targetTab === 'family' || targetTab === 'help') {
+            setElderTab(targetTab);
+          } else {
+            window.location.hash = '#/elder/today';
+            setElderTab('today');
+          }
+        } else if (role === 'caretaker') {
+          if (
+            targetTab === 'today' ||
+            targetTab === 'meds' ||
+            targetTab === 'log' ||
+            targetTab === 'alerts'
+          ) {
+            setCaretakerTab(targetTab);
+          } else {
+            window.location.hash = '#/caretaker/today';
+            setCaretakerTab('today');
+          }
+        } else if (role === 'family') {
+          if (
+            targetTab === 'home' ||
+            targetTab === 'team' ||
+            targetTab === 'tasks' ||
+            targetTab === 'settings'
+          ) {
+            setFamilyTab(targetTab);
+          } else {
+            window.location.hash = '#/family/home';
+            setFamilyTab('home');
+          }
+        }
+      } else {
+        // Unrecognized or root hash: set to role default
+        const defaultTab = role === 'family' ? 'home' : 'today';
+        window.location.hash = `#/${role}/${defaultTab}`;
       }
     };
 
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+    enforceRouteGuard();
+    window.addEventListener('hashchange', enforceRouteGuard);
+    return () => window.removeEventListener('hashchange', enforceRouteGuard);
+  }, [role]);
 
   const switchElderTab = (tab: 'today' | 'family' | 'help') => {
     setElderTab(tab);
@@ -89,8 +140,24 @@ export const MobileShell: React.FC<MobileShellProps> = ({
 
   return (
     <div className="w-full max-w-[390px] mx-auto min-h-screen bg-[#fcfbfa] flex flex-col shadow-2xl relative border-x border-slate-200/60 pb-16 font-sans">
-      {/* Top Header with Long-press Demo Mode Trigger */}
+      {/* Top Header with Logged-in Name, Role & Long-press Demo Mode Trigger */}
       <LogoHeader onTriggerDemo={() => setDemoModalOpen(true)} />
+
+      {/* Prompt 5 Route Guard Bounce Notice */}
+      {bounceNotice && (
+        <div className="bg-amber-50 border-b border-amber-300 px-4 py-2 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 animate-in slide-in-from-top">
+          <div className="flex items-center gap-1.5">
+            <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>{bounceNotice}</span>
+          </div>
+          <button
+            onClick={() => setBounceNotice(null)}
+            className="text-[10px] text-amber-800 underline font-bold cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Main Content Area - Renders ONLY the active tab route */}
       <main className="flex-1 w-full">
@@ -152,6 +219,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </button>
 
             <button
+              id="elder-help-tab-btn"
               onClick={() => switchElderTab('help')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 elderTab === 'help' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
@@ -179,6 +247,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </button>
 
             <button
+              id="caretaker-tab-meds"
               onClick={() => switchCaretakerTab('meds')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 caretakerTab === 'meds' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
@@ -201,6 +270,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </button>
 
             <button
+              id="caretaker-tab-alerts"
               onClick={() => switchCaretakerTab('alerts')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 caretakerTab === 'alerts' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
@@ -228,6 +298,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </button>
 
             <button
+              id="family-tab-team"
               onClick={() => switchFamilyTab('team')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 familyTab === 'team' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
@@ -239,6 +310,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </button>
 
             <button
+              id="family-tab-tasks"
               onClick={() => switchFamilyTab('tasks')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 familyTab === 'tasks' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
@@ -250,6 +322,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </button>
 
             <button
+              id="family-tab-settings"
               onClick={() => switchFamilyTab('settings')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 familyTab === 'settings' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
@@ -262,6 +335,9 @@ export const MobileShell: React.FC<MobileShellProps> = ({
           </>
         )}
       </nav>
+
+      {/* Interactive Walkthrough Tour (Prompt 6) */}
+      <WalkthroughTour forceStart={isTourRunning} onClose={endWalkthroughTour} />
 
       {/* Secret Demo Mode Modal (Opened via 700ms long-press on Adept logo) */}
       {demoModalOpen && (

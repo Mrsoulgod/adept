@@ -596,7 +596,7 @@ export const ElderScreen: React.FC = () => {
   // MAIN ELDER HOME VIEW
   // -------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#1A1D1A] p-6 max-w-xl mx-auto flex flex-col justify-between font-sans">
+    <div id="elder-screen-root" className="min-h-screen bg-[#FAF8F5] text-[#1A1D1A] p-6 max-w-xl mx-auto flex flex-col justify-between font-sans">
       <div className="space-y-8">
         {/* Top Header: Time-aware greeting & Hindi/English Toggle */}
         <header className="pt-2">
@@ -656,7 +656,7 @@ export const ElderScreen: React.FC = () => {
         {/* HERO 1: ONE NEXT ACTION AS A GIANT CARD                  */}
         {/* ========================================================= */}
         {nextPendingMed ? (
-          <div className="bg-white border-2 border-[#EAE5DB] rounded-3xl p-6 sm:p-7 shadow-sm space-y-6">
+          <div id="elder-main-action-card" className="bg-white border-2 border-[#EAE5DB] rounded-3xl p-6 sm:p-7 shadow-sm space-y-6">
             <div>
               <span className="text-base font-bold text-[#244937] bg-[#EAF2EC] px-3.5 py-1 rounded-full uppercase tracking-wide">
                 {MEAL_ANCHORS[nextPendingMed.mealAnchor]?.label}
@@ -745,6 +745,7 @@ export const ElderScreen: React.FC = () => {
             <div className="pt-2 border-t border-[#EAE5DB]">
               <div className="flex flex-col sm:flex-row items-center gap-3">
                 <button
+                  id="elder-voice-btn"
                   onClick={toggleListening}
                   className={`w-full flex-1 min-h-[68px] rounded-2xl font-bold text-xl px-5 py-4 flex items-center justify-center gap-3 transition-all cursor-pointer shadow-xs active:scale-98 ${
                     isListening
@@ -855,7 +856,7 @@ export const ElderScreen: React.FC = () => {
         {/* ========================================================= */}
         {/* HERO 4: ONE QUESTION DAILY "HOW DO YOU FEEL?" (4 FACES)   */}
         {/* ========================================================= */}
-        <section className="bg-white border border-[#EAE5DB] rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+        <section id="elder-feeling-checkin" className="bg-white border border-[#EAE5DB] rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
           <div>
             <h3 className="text-2xl font-bold text-[#1A1D1A] tracking-tight">
               {t.howFeelTitle}

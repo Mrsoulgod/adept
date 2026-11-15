@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdeptProvider, useAdept } from './context/AdeptContext';
-import { AuthScreen } from './components/auth/AuthScreen';
-import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
+import { WelcomeScreen } from './components/auth/WelcomeScreen';
+import { ElderSetupWizard } from './components/onboarding/ElderSetupWizard';
 import { MobileShell } from './components/shell/MobileShell';
 import { DemoModeModal } from './components/shared/DemoModeModal';
 import { SettingsModal } from './components/shared/SettingsModal';
@@ -79,12 +79,12 @@ const AdeptMain: React.FC = () => {
     return <DesignPreviewPage onReturnToApp={closeDesign} />;
   }
 
-  // 1. Unauthenticated and Elder tablet not paired -> Render Mobile-first Auth Screen
+  // 1. Unauthenticated and Elder tablet not paired -> Render Mobile-first Welcome Screen (Prompt 1 & 4)
   const isAuthenticated = Boolean(authUser) || isElderPaired;
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#fcfbfa] flex items-center justify-center font-sans selection:bg-emerald-100 selection:text-emerald-900">
-        <AuthScreen onTriggerDemo={() => setDemoModalOpen(true)} />
+        <WelcomeScreen onTriggerDemo={() => setDemoModalOpen(true)} />
         {demoModalOpen && (
           <DemoModeModal
             onClose={() => setDemoModalOpen(false)}
@@ -98,12 +98,12 @@ const AdeptMain: React.FC = () => {
     );
   }
 
-  // 2. First-time Family Owner needs onboarding setup
+  // 2. First-time Family Owner needs onboarding setup (Prompt 2: One-Question Elder Profile Wizard)
   const needsOnboarding = showOnboardingSim || (!isElderPaired && !isOnboarded && authUser?.isOwner);
   if (needsOnboarding) {
     return (
       <div className="min-h-screen bg-[#fcfbfa] flex items-center justify-center font-sans selection:bg-emerald-100 selection:text-emerald-900">
-        <OnboardingWizard
+        <ElderSetupWizard
           onComplete={() => setShowOnboardingSim(false)}
           onTriggerDemo={() => setDemoModalOpen(true)}
         />
