@@ -12,7 +12,11 @@ import {
   RotateCcw,
   Sunrise,
   Sun,
-  Sunset
+  Sunset,
+  AlertTriangle,
+  PlusCircle,
+  MinusCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 export const ElderScreen: React.FC = () => {
@@ -375,8 +379,11 @@ export const ElderScreen: React.FC = () => {
   // -------------------------------------------------------------
   if (activeElderProposal) {
     const medData = activeElderProposal.medicationData;
-    const anchor = (medData.mealAnchor as MealAnchor) || 'after_lunch';
+    const anchor = (medData?.mealAnchor as MealAnchor) || 'after_lunch';
     const anchorConfig = MEAL_ANCHORS[anchor];
+    const hasMultipleChanges =
+      activeElderProposal.proposedScheduleChanges &&
+      activeElderProposal.proposedScheduleChanges.length > 0;
 
     return (
       <div className="min-h-screen bg-[#FAF8F5] text-[#1A1D1A] p-6 max-w-xl mx-auto flex flex-col justify-between">
@@ -410,32 +417,115 @@ export const ElderScreen: React.FC = () => {
 
           <h1 className="text-3xl sm:text-4xl font-extrabold text-[#1A1D1A] leading-tight mb-4">
             {language === 'hi'
-              ? `डॉ. वांस ने ${activeElderProposal.title} जोड़ने की सिफारिश की है।`
-              : `Dr. Vance recommends adding ${activeElderProposal.title}.`}
+              ? `डॉ. वांस ने आपकी दिनचर्या में बदलाव का प्रस्ताव दिया है।`
+              : `Dr. Vance proposes schedule adjustments for your routine.`}
           </h1>
 
-          <div className="bg-white border-2 border-[#EBDBC1] rounded-3xl p-6 sm:p-7 mb-8 space-y-4 shadow-xs">
-            <div className="text-xl font-bold text-[#1A1D1A]">
-              {language === 'hi' ? 'कब लेनी है:' : 'When to take it:'}
-              <span className="block text-2xl font-black text-[#244937] mt-1">
-                {anchorConfig.label} ({anchorConfig.windowLabel})
-              </span>
-            </div>
+          <div className="bg-white border-2 border-[#EBDBC1] rounded-3xl p-6 sm:p-7 mb-6 space-y-4 shadow-xs">
+            {hasMultipleChanges ? (
+              /* Post-Visit Voice Note Multi-Change List */
+              <div className="space-y-4">
+                <p className="text-xl text-[#474C46] leading-relaxed">
+                  {activeElderProposal.summary}
+                </p>
 
-            <p className="text-xl text-[#474C46] leading-relaxed">
-              {activeElderProposal.summary}
-            </p>
+                <div className="space-y-3 pt-2">
+                  <div className="text-lg font-bold text-[#1A1D1A] uppercase tracking-wider text-xs">
+                    {language === 'hi' ? 'प्रस्तावित बदलाव:' : 'Proposed Schedule Adjustments:'}
+                  </div>
 
-            <div className="bg-[#FAF8F5] p-4 rounded-2xl border border-[#EAE5DB] text-xl text-[#1A1D1A]">
-              <strong>{language === 'hi' ? 'निर्देश:' : 'Instructions:'}</strong>{' '}
-              {medData.instructions || 'Take 1 tablet with water and food.'}
-            </div>
+                  {activeElderProposal.proposedScheduleChanges!.map((change, idx) => {
+                    const changeAnchor = change.mealAnchor ? MEAL_ANCHORS[change.mealAnchor] : null;
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-4 rounded-2xl border text-lg ${
+                          change.action === 'discontinue'
+                            ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                            : change.action === 'modify'
+                            ? 'bg-sky-50/70 border-sky-200 text-sky-950'
+                            : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-bold text-xl">
+                          {change.action === 'discontinue' && (
+                            <MinusCircle className="w-6 h-6 text-rose-700 shrink-0" />
+                          )}
+                          {change.action === 'modify' && (
+                            <RefreshCw className="w-6 h-6 text-sky-700 shrink-0" />
+                          )}
+                          {change.action === 'add' && (
+                            <PlusCircle className="w-6 h-6 text-emerald-700 shrink-0" />
+                          )}
+                          <span>
+                            {change.action === 'discontinue'
+                              ? language === 'hi'
+                                ? `बंद करें: ${change.friendlyName}`
+                                : `Stop: ${change.friendlyName}`
+                              : change.action === 'modify'
+                              ? language === 'hi'
+                                ? `बदलें: ${change.friendlyName} (${change.dosage})`
+                                : `Update: ${change.friendlyName} (${change.dosage})`
+                              : language === 'hi'
+                              ? `जोड़ें: ${change.friendlyName} (${change.dosage})`
+                              : `Add: ${change.friendlyName} (${change.dosage})`}
+                          </span>
+                        </div>
 
-            <p className="text-lg text-[#92631E] font-medium italic">
+                        {changeAnchor && (
+                          <div className="text-base text-slate-700 mt-1 font-semibold">
+                            {changeAnchor.label} ({changeAnchor.windowLabel})
+                          </div>
+                        )}
+
+                        {change.instructions && (
+                          <div className="text-base text-slate-600 mt-0.5">
+                            {change.instructions}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* Single Medication Proposal from Prescription OCR */
+              <div className="space-y-4">
+                <div className="text-xl font-bold text-[#1A1D1A]">
+                  {language === 'hi' ? 'कब लेनी है:' : 'When to take it:'}
+                  <span className="block text-2xl font-black text-[#244937] mt-1">
+                    {anchorConfig.label} ({anchorConfig.windowLabel})
+                  </span>
+                </div>
+
+                <p className="text-xl text-[#474C46] leading-relaxed">
+                  {activeElderProposal.summary}
+                </p>
+
+                <div className="bg-[#FAF8F5] p-4 rounded-2xl border border-[#EAE5DB] text-xl text-[#1A1D1A]">
+                  <strong>{language === 'hi' ? 'निर्देश:' : 'Instructions:'}</strong>{' '}
+                  {medData.instructions || 'Take 1 tablet with water and food.'}
+                </div>
+              </div>
+            )}
+
+            {/* Reassurance text */}
+            <p className="text-lg text-[#92631E] font-medium italic pt-1">
               {language === 'hi'
                 ? 'जब तक आप हाँ नहीं कहते, यह दिनचर्या में नहीं जुड़ेगी।'
                 : 'Nothing will change unless you tap yes below. You are in control.'}
             </p>
+          </div>
+
+          {/* Mandatory Confirm With Your Doctor Safety Note */}
+          <div className="bg-[#FBF5EA] border border-[#EBDBC1] p-4 rounded-2xl text-base text-[#92631E] flex items-start gap-3 mb-6">
+            <AlertTriangle className="w-6 h-6 text-[#92631E] shrink-0 mt-0.5" />
+            <div>
+              <strong>{language === 'hi' ? 'डॉक्टर से पुष्टि करें:' : 'Confirm with your doctor:'}</strong>{' '}
+              {language === 'hi'
+                ? `यह डॉ. वांस के परामर्श पर आधारित एआई प्रस्ताव है। किसी भी बदलाव से पहले हमेशा अपने डॉक्टर से पुष्टि करें।`
+                : `This is an AI proposal based on Dr. ${profile.doctorName}'s clinical notes. Please confirm with your doctor or pharmacist before changing your regimen.`}
+            </div>
           </div>
         </div>
 
@@ -445,14 +535,14 @@ export const ElderScreen: React.FC = () => {
               elderResolveProposal(activeElderProposal.id, true);
               setFeedbackNotice(
                 language === 'hi'
-                  ? `स्वीकृत! ${activeElderProposal.title} आपकी दिनचर्या में शामिल है।`
-                  : `Approved! ${activeElderProposal.title} is now in your routine.`
+                  ? `स्वीकृत! नई दिनचर्या दर्ज हो गई है।`
+                  : `Approved! Schedule adjustments are now active in your routine.`
               );
             }}
             className="w-full min-h-[76px] bg-[#244937] hover:bg-[#1B3729] text-white text-2xl sm:text-3xl font-bold rounded-2xl px-6 py-5 flex items-center justify-center gap-3 shadow-md active:scale-98 cursor-pointer transition-all"
           >
             <CheckCircle2 className="w-8 h-8 text-emerald-300" />
-            <span>{language === 'hi' ? 'हाँ, दिनचर्या में जोड़ें' : 'Yes, add this to my routine'}</span>
+            <span>{language === 'hi' ? 'हाँ, दिनचर्या में जोड़ें' : 'Yes, apply these changes to my routine'}</span>
           </button>
 
           <button

@@ -11,6 +11,8 @@ import { ROLE_PASSCODES } from '../src/context/AdeptContext';
 import {
   parsePrescriptionImage,
   generateDoctorBriefWithGemini,
+  parsePostVisitVoiceNote,
+  DOCTOR_CONFIRMATION_SAFETY_NOTE,
 } from '../src/lib/gemini';
 import {
   buildCaregiverDigestHtml,
@@ -260,8 +262,8 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
     });
   });
 
-  describe('Hero Feature 3: Doctor Handoff Loop (OCR & Pre-Visit Brief)', () => {
-    it('extracts prescription into structured proposal with meal anchor', async () => {
+  describe('Hero Feature 3: Doctor Handoff Loop (OCR, Pre-Visit Brief, Post-Visit Voice & Safety Note)', () => {
+    it('(a) upload prescription photo -> Gemini extracts meds into a PROPOSED schedule with safety note', async () => {
       const result = await parsePrescriptionImage('data:image/jpeg;base64,mock');
       expect(result.medicationName).toBeDefined();
       expect(result.friendlyName).toBeDefined();
@@ -270,9 +272,13 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
         result.mealAnchor
       );
       expect(result.confidenceScore).toBeGreaterThan(0.9);
+
+      // Verify "confirm with your doctor" safety note on AI output
+      expect(result.safetyNote).toBeDefined();
+      expect(result.safetyNote.toLowerCase()).toContain('confirm with your doctor');
     });
 
-    it('generates pre-visit clinical brief for Dr. Vance', async () => {
+    it('(b) pre-visit brief: one-page summary of adherence, symptom trend, questions, and safety note', async () => {
       const brief = await generateDoctorBriefWithGemini(
         INITIAL_PROFILE,
         INITIAL_MEDICATIONS,
@@ -286,6 +292,54 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
       expect(brief.activeMedications.length).toBe(INITIAL_MEDICATIONS.length);
       expect(brief.notableObservations.length).toBeGreaterThan(0);
       expect(brief.elderQuestionsForDoctor.length).toBeGreaterThan(0);
+
+      // Verify symptom trends breakdown
+      expect(brief.symptomTrends).toBeDefined();
+      expect(brief.symptomTrends?.overallTrend).toBeDefined();
+      expect(brief.symptomTrends?.breakdown.great).toBeGreaterThan(0);
+      expect(brief.symptomTrends?.breakdown.steady).toBeGreaterThan(0);
+
+      // Verify "confirm with your doctor" safety note on AI output
+      expect(brief.safetyNote).toBeDefined();
+      expect(brief.safetyNote?.toLowerCase()).toContain('confirm with your doctor');
+    });
+
+    it('(c) post-visit voice note -> extracts proposed schedule changes with safety note', async () => {
+      const voiceText =
+        "Dr. Vance examined Arthur today. Blood pressure is steady at 128/82. For his knee discomfort, stop Glucosamine and start Celecoxib 100mg after lunch with food. Also, increase Atorvastatin from 20mg to 40mg with dinner.";
+
+      const result = await parsePostVisitVoiceNote(voiceText, INITIAL_MEDICATIONS);
+
+      expect(result.summary).toBeDefined();
+      expect(result.doctorComments).toBeDefined();
+      expect(result.proposedChanges.length).toBeGreaterThanOrEqual(2);
+
+      // Verify action types: discontinue, add, modify
+      const actions = result.proposedChanges.map((c) => c.action);
+      expect(actions).toContain('discontinue');
+      expect(actions).toContain('add');
+      expect(actions).toContain('modify');
+
+      // Verify specific extracted changes
+      const discontinued = result.proposedChanges.find((c) => c.action === 'discontinue');
+      expect(discontinued?.medicationName).toContain('Glucosamine');
+
+      const added = result.proposedChanges.find((c) => c.action === 'add');
+      expect(added?.medicationName).toContain('Celecoxib');
+      expect(added?.mealAnchor).toBe('after_lunch');
+
+      const modified = result.proposedChanges.find((c) => c.action === 'modify');
+      expect(modified?.medicationName).toContain('Atorvastatin');
+      expect(modified?.dosage).toContain('40');
+
+      // Verify "confirm with your doctor" safety note on AI output
+      expect(result.safetyNote).toBeDefined();
+      expect(result.safetyNote.toLowerCase()).toContain('confirm with your doctor');
+    });
+
+    it('guarantees every AI output includes a "confirm with your doctor" safety note', () => {
+      expect(DOCTOR_CONFIRMATION_SAFETY_NOTE).toBeDefined();
+      expect(DOCTOR_CONFIRMATION_SAFETY_NOTE.toLowerCase()).toContain('confirm with your doctor');
     });
   });
 

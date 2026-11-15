@@ -146,14 +146,27 @@ export interface DoseLog {
 
 export type ProposalStatus = 'pending_elder_confirmation' | 'confirmed' | 'rejected' | 'vetoed';
 
+export interface ScheduleChangeItem {
+  action: 'add' | 'modify' | 'discontinue';
+  medicationName: string;
+  friendlyName: string;
+  dosage?: string;
+  mealAnchor?: MealAnchor;
+  instructions?: string;
+  reason: string;
+}
+
 export interface AIProposal {
   id: string;
   title: string;
   summary: string;
-  proposedBy: 'gemini_prescription_ocr' | 'caretaker_ai_suggest' | 'doctor_handoff';
+  proposedBy: 'gemini_prescription_ocr' | 'caretaker_ai_suggest' | 'doctor_handoff' | 'post_visit_voice';
   prescriptionImageUrl?: string;
+  voiceTranscript?: string;
   medicationData: Partial<Medication>;
+  proposedScheduleChanges?: ScheduleChangeItem[];
   doctorNote?: string;
+  safetyNote?: string; // "Confirm with your doctor before applying any changes"
   status: ProposalStatus;
   createdAt: string;
   resolvedAt?: string;
@@ -182,6 +195,19 @@ export interface AuditLogItem {
   revertedPayload?: string;
 }
 
+export interface SymptomTrendData {
+  overallTrend: string;
+  dominantScore: 'great' | 'steady' | 'tired' | 'discomfort';
+  checkinsRecorded: number;
+  breakdown: {
+    great: number;
+    steady: number;
+    tired: number;
+    discomfort: number;
+  };
+  recentObservations: string[];
+}
+
 export interface DoctorBrief {
   generatedAt: string;
   elderName: string;
@@ -192,6 +218,7 @@ export interface DoctorBrief {
   totalDosesScheduled: number;
   deviationsRecorded: number;
   reportedWellnessSummary: string;
+  symptomTrends?: SymptomTrendData;
   activeMedications: Array<{
     name: string;
     dosage: string;
@@ -200,5 +227,6 @@ export interface DoctorBrief {
   }>;
   notableObservations: string[];
   elderQuestionsForDoctor: string[];
+  safetyNote?: string;
 }
 

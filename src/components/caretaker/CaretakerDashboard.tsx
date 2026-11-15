@@ -3,6 +3,7 @@ import { useAdept } from '../../context/AdeptContext';
 import type { Medication } from '../../lib/types';
 import { MEAL_ANCHORS } from '../../lib/types';
 import { PrescriptionScanner } from './PrescriptionScanner';
+import { PostVisitVoiceModal } from './PostVisitVoiceModal';
 import { BaselineDeviationView } from './BaselineDeviationView';
 import { CaregiverDigestModal } from './CaregiverDigestModal';
 import { PreVisitBriefModal } from './PreVisitBriefModal';
@@ -14,13 +15,15 @@ import {
   Plus,
   Sparkles,
   Clock,
-  UserCheck
+  UserCheck,
+  Volume2,
 } from 'lucide-react';
 
 export const CaretakerDashboard: React.FC = () => {
   const { profile, medications, aiProposals } = useAdept();
 
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [digestOpen, setDigestOpen] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
   const [scheduleEditorOpen, setScheduleEditorOpen] = useState(false);
@@ -61,7 +64,15 @@ export const CaretakerDashboard: React.FC = () => {
               className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 cursor-pointer transition-all"
             >
               <Stethoscope className="w-4 h-4 text-emerald-700" />
-              <span>Pre-Visit Brief</span>
+              <span>Pre-Visit Brief (PDF)</span>
+            </button>
+
+            <button
+              onClick={() => setVoiceModalOpen(true)}
+              className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 cursor-pointer transition-all"
+            >
+              <Volume2 className="w-4 h-4 text-emerald-700" />
+              <span>Post-Visit Voice Note</span>
             </button>
 
             <button
@@ -173,6 +184,7 @@ export const CaretakerDashboard: React.FC = () => {
 
       {/* Modals */}
       {scannerOpen && <PrescriptionScanner onClose={() => setScannerOpen(false)} />}
+      {voiceModalOpen && <PostVisitVoiceModal onClose={() => setVoiceModalOpen(false)} />}
       {digestOpen && <CaregiverDigestModal onClose={() => setDigestOpen(false)} />}
       {briefOpen && <PreVisitBriefModal onClose={() => setBriefOpen(false)} />}
       {scheduleEditorOpen && (

@@ -265,37 +265,95 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     setAiProposals(updatedProposals);
 
-    if (accept && proposal.medicationData) {
-      // Add medication to active schedule
-      const newMed: Medication = {
-        id: `med-${Date.now()}`,
-        name: proposal.medicationData.name || proposal.title,
-        friendlyName: proposal.medicationData.friendlyName || proposal.title,
-        dosage: proposal.medicationData.dosage || 'Standard dose',
-        instructions: proposal.medicationData.instructions || 'Take with food',
-        mealAnchor: proposal.medicationData.mealAnchor || 'after_lunch',
-        shapeDescription: proposal.medicationData.shapeDescription || 'Tablet',
-        color: proposal.medicationData.color || '#3b82f6',
-        purpose: proposal.medicationData.purpose || proposal.summary,
-        prescribedBy: profile.doctorName,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      };
-      setMedications((prev) => [...prev, newMed]);
+    if (accept) {
+      if (proposal.proposedScheduleChanges && proposal.proposedScheduleChanges.length > 0) {
+        // Multi-change schedule proposal from post-visit voice note
+        setMedications((prev) => {
+          let updated = [...prev];
+          for (const change of proposal.proposedScheduleChanges!) {
+            if (change.action === 'discontinue') {
+              updated = updated.map((m) =>
+                m.name.toLowerCase().includes(change.medicationName.toLowerCase()) ||
+                m.friendlyName.toLowerCase().includes(change.friendlyName.toLowerCase())
+                  ? { ...m, isActive: false }
+                  : m
+              );
+            } else if (change.action === 'modify') {
+              updated = updated.map((m) =>
+                m.name.toLowerCase().includes(change.medicationName.toLowerCase()) ||
+                m.friendlyName.toLowerCase().includes(change.friendlyName.toLowerCase())
+                  ? {
+                      ...m,
+                      dosage: change.dosage || m.dosage,
+                      mealAnchor: change.mealAnchor || m.mealAnchor,
+                      instructions: change.instructions || m.instructions,
+                    }
+                  : m
+              );
+            } else if (change.action === 'add') {
+              const newMed: Medication = {
+                id: `med-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                name: change.medicationName,
+                friendlyName: change.friendlyName,
+                dosage: change.dosage || 'Standard dose',
+                instructions: change.instructions || 'Take with food',
+                mealAnchor: change.mealAnchor || 'after_lunch',
+                shapeDescription: 'Capsule',
+                color: '#059669',
+                purpose: change.reason,
+                prescribedBy: profile.doctorName,
+                isActive: true,
+                createdAt: new Date().toISOString(),
+              };
+              updated.push(newMed);
+            }
+          }
+          return updated;
+        });
 
-      // Audit Log with ELDER VETO option
-      const auditItem: AuditLogItem = {
-        id: `audit-${Date.now()}`,
-        actorRole: 'elder',
-        actorName: `${profile.name} (Elder Confirmation)`,
-        action: `Approved New Medication: ${newMed.friendlyName}`,
-        plainEnglishDescription: `Arthur reviewed Dr. Vance's prescription proposal and approved adding ${newMed.friendlyName} (${newMed.dosage}) with ${MEAL_ANCHORS[newMed.mealAnchor]?.label}.`,
-        timestamp: new Date().toISOString(),
-        canElderVeto: true, // Arthur can still veto or undo this later!
-        isVetoed: false,
-        revertedPayload: newMed.id,
-      };
-      setAuditLogs((prev) => [auditItem, ...prev]);
+        const auditItem: AuditLogItem = {
+          id: `audit-${Date.now()}`,
+          actorRole: 'elder',
+          actorName: `${profile.name} (Elder Confirmation)`,
+          action: `Approved Post-Visit Schedule Changes`,
+          plainEnglishDescription: `Arthur reviewed and approved ${proposal.proposedScheduleChanges.length} schedule updates from Dr. Vance: ${proposal.summary}`,
+          timestamp: new Date().toISOString(),
+          canElderVeto: true,
+          isVetoed: false,
+        };
+        setAuditLogs((prev) => [auditItem, ...prev]);
+      } else if (proposal.medicationData) {
+        // Add single medication to active schedule (from prescription OCR)
+        const newMed: Medication = {
+          id: `med-${Date.now()}`,
+          name: proposal.medicationData.name || proposal.title,
+          friendlyName: proposal.medicationData.friendlyName || proposal.title,
+          dosage: proposal.medicationData.dosage || 'Standard dose',
+          instructions: proposal.medicationData.instructions || 'Take with food',
+          mealAnchor: proposal.medicationData.mealAnchor || 'after_lunch',
+          shapeDescription: proposal.medicationData.shapeDescription || 'Tablet',
+          color: proposal.medicationData.color || '#3b82f6',
+          purpose: proposal.medicationData.purpose || proposal.summary,
+          prescribedBy: profile.doctorName,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        };
+        setMedications((prev) => [...prev, newMed]);
+
+        // Audit Log with ELDER VETO option
+        const auditItem: AuditLogItem = {
+          id: `audit-${Date.now()}`,
+          actorRole: 'elder',
+          actorName: `${profile.name} (Elder Confirmation)`,
+          action: `Approved New Medication: ${newMed.friendlyName}`,
+          plainEnglishDescription: `Arthur reviewed Dr. Vance's prescription proposal and approved adding ${newMed.friendlyName} (${newMed.dosage}) with ${MEAL_ANCHORS[newMed.mealAnchor]?.label}.`,
+          timestamp: new Date().toISOString(),
+          canElderVeto: true, // Arthur can still veto or undo this later!
+          isVetoed: false,
+          revertedPayload: newMed.id,
+        };
+        setAuditLogs((prev) => [auditItem, ...prev]);
+      }
     } else {
       const auditItem: AuditLogItem = {
         id: `audit-${Date.now()}`,

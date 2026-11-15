@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useAdept } from '../../context/AdeptContext';
-import { parsePrescriptionImage } from '../../lib/gemini';
+import { parsePrescriptionImage, DOCTOR_CONFIRMATION_SAFETY_NOTE } from '../../lib/gemini';
 import type { PrescriptionExtractionResult } from '../../lib/gemini';
 import { Camera, Sparkles, CheckCircle2, ArrowRight, X, AlertTriangle, FileText } from 'lucide-react';
 import { MEAL_ANCHORS } from '../../lib/types';
@@ -80,6 +80,7 @@ export const PrescriptionScanner: React.FC<PrescriptionScannerProps> = ({ onClos
         isActive: true,
       },
       doctorNote: extractedData.doctorNotes,
+      safetyNote: extractedData.safetyNote || DOCTOR_CONFIRMATION_SAFETY_NOTE,
     });
 
     setProposalSubmitted(true);
@@ -287,10 +288,18 @@ export const PrescriptionScanner: React.FC<PrescriptionScannerProps> = ({ onClos
                       <strong>Clinical Notes:</strong> {extractedData.doctorNotes}
                     </div>
 
+                    {/* Mandatory Safety Note */}
+                    <div className="bg-amber-50/90 border border-amber-300 p-3.5 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Confirm with your doctor:</strong> This is an AI-assisted medication proposal. Always confirm with {profile.doctorName} or your pharmacist before changing any prescribed regimen.
+                      </div>
+                    </div>
+
                     {/* Strict Law Notice */}
-                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs text-amber-950 flex items-start gap-2">
-                      <span className="font-bold shrink-0">Law Check:</span>
-                      <span>This will not be scheduled until Arthur Davies taps "Yes" on his screen.</span>
+                    <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs text-emerald-950 flex items-start gap-2">
+                      <span className="font-bold shrink-0">Design Law Check:</span>
+                      <span>This proposal will NOT be added to Arthur's schedule until he reviews and taps "Yes" on his elder screen.</span>
                     </div>
 
                     {/* Action Button */}
