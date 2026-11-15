@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AdeptProvider, useAdept } from './context/AdeptContext';
 import { RoleSelector } from './components/shared/RoleSelector';
 import { ElderScreen } from './components/elder/ElderScreen';
@@ -6,11 +6,48 @@ import { CaretakerDashboard } from './components/caretaker/CaretakerDashboard';
 import { FamilyDashboard } from './components/family/FamilyDashboard';
 import { AuditLogViewer } from './components/shared/AuditLogViewer';
 import { SettingsModal } from './components/shared/SettingsModal';
+import { DesignPreviewPage } from './pages/DesignPreviewPage';
+import { Palette } from 'lucide-react';
 
 const AdeptMain: React.FC = () => {
   const { role, setDirectRole } = useAdept();
   const [auditOpen, setAuditOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showDesignPreview, setShowDesignPreview] = useState(false);
+
+  // Check URL path or hash on load
+  useEffect(() => {
+    const checkRoute = () => {
+      if (
+        window.location.pathname === '/design' ||
+        window.location.hash === '#/design' ||
+        window.location.hash === '#design'
+      ) {
+        setShowDesignPreview(true);
+      }
+    };
+    checkRoute();
+    window.addEventListener('popstate', checkRoute);
+    window.addEventListener('hashchange', checkRoute);
+    return () => {
+      window.removeEventListener('popstate', checkRoute);
+      window.removeEventListener('hashchange', checkRoute);
+    };
+  }, []);
+
+  const openDesign = () => {
+    setShowDesignPreview(true);
+    window.history.pushState({}, '', '/design');
+  };
+
+  const closeDesign = () => {
+    setShowDesignPreview(false);
+    window.history.pushState({}, '', '/');
+  };
+
+  if (showDesignPreview) {
+    return <DesignPreviewPage onReturnToApp={closeDesign} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#fcfbfa] flex flex-col font-sans selection:bg-emerald-100 selection:text-emerald-900">
@@ -29,6 +66,13 @@ const AdeptMain: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={openDesign}
+              className="text-xs bg-emerald-50 hover:bg-emerald-100 text-[#064e3b] font-bold px-2.5 py-1.5 rounded-xl border border-emerald-300 flex items-center gap-1 cursor-pointer"
+            >
+              <Palette className="w-3.5 h-3.5" />
+              <span>/design</span>
+            </button>
+            <button
               onClick={() => setSettingsOpen(true)}
               className="text-xs text-slate-500 hover:text-slate-800 underline font-semibold px-2 py-1"
             >
@@ -46,6 +90,7 @@ const AdeptMain: React.FC = () => {
         <RoleSelector
           onOpenAudit={() => setAuditOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenDesign={openDesign}
         />
       )}
 

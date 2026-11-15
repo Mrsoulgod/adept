@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { useAdept } from '../../context/AdeptContext';
 import type { Role } from '../../lib/types';
 import { PasscodeModal } from './PasscodeModal';
-import { User, Users, HeartHandshake, Settings, FileText } from 'lucide-react';
+import { User, Users, HeartHandshake, Settings, FileText, Palette } from 'lucide-react';
 
 interface RoleSelectorProps {
   onOpenAudit: () => void;
   onOpenSettings: () => void;
+  onOpenDesign?: () => void;
 }
 
-export const RoleSelector: React.FC<RoleSelectorProps> = ({ onOpenAudit, onOpenSettings }) => {
+export const RoleSelector: React.FC<RoleSelectorProps> = ({ onOpenAudit, onOpenSettings, onOpenDesign }) => {
   const { role, pendingProposalsCount } = useAdept();
   const [passcodeModalTarget, setPasscodeModalTarget] = useState<Role | null>(null);
 
@@ -90,8 +91,19 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({ onOpenAudit, onOpenS
             })}
           </div>
 
-          {/* Right Tools (Audit Trail & Settings) */}
+          {/* Right Tools (Design Preview, Audit Trail & Settings) */}
           <div className="flex items-center gap-1.5">
+            {onOpenDesign && (
+              <button
+                onClick={onOpenDesign}
+                title="Design System Preview (/design)"
+                className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#064e3b] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Palette className="w-4 h-4 text-[#064e3b]" />
+                <span className="hidden sm:inline">Design System</span>
+              </button>
+            )}
+
             <button
               onClick={onOpenAudit}
               title="Audit Log & Elder Veto History"

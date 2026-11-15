@@ -1,35 +1,78 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --color-bg-elder: #fcfbfa;
-    --color-text-elder: #0f172a;
-    --color-primary-elder: #064e3b;
-    --color-amber-elder: #d97706;
-  }
+@theme {
+  --font-sans: 'Atkinson Hyperlegible', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
+  /* Warm Off-White Palette */
+  --color-warm-bg: #FAF8F5;
+  --color-warm-surface: #FFFFFF;
+  --color-warm-card: #F4F0E8;
+  --color-warm-border: #EAE5DB;
+  --color-warm-border-strong: #D8D1C3;
+
+  /* Typography / Ink Tokens */
+  --color-ink-primary: #1A1D1A;
+  --color-ink-secondary: #474C46;
+  --color-ink-muted: #70756F;
+
+  /* One Calm Accent (Heritage Sage / Deep Forest) */
+  --color-calm-accent: #244937;
+  --color-calm-accent-hover: #1B3729;
+  --color-calm-accent-light: #EAF2EC;
+  --color-calm-accent-border: #C6DBD0;
+
+  /* Warm Amber (Rest / Defer / Attention - Never Shame) */
+  --color-amber-quiet: #92631E;
+  --color-amber-quiet-light: #FBF5EA;
+  --color-amber-quiet-border: #EBDBC1;
+}
+
+@layer base {
   body {
-    background-color: #fcfbfa;
-    color: #0f172a;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--color-warm-bg, #FAF8F5);
+    color: var(--color-ink-primary, #1A1D1A);
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
   }
 }
 
-/* Elder Accessibility Guarantees */
-.elder-tap-target {
+/* Elder Type Scale Utility Classes (Body text 20px+, tap target 64px+) */
+.type-elder-headline {
+  font-size: 2.25rem; /* 36px */
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.type-elder-title {
+  font-size: 1.75rem; /* 28px */
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.type-elder-body {
+  font-size: 1.375rem; /* 22px */
+  line-height: 1.55;
+  font-weight: 400;
+}
+
+.type-elder-body-bold {
+  font-size: 1.375rem; /* 22px */
+  line-height: 1.55;
+  font-weight: 700;
+}
+
+.type-elder-caption {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+/* Tap Target Enforcement */
+.tap-target-elder {
   min-height: 64px;
   min-width: 64px;
-}
-
-.elder-body-text {
-  font-size: 1.25rem; /* 20px+ */
-  line-height: 1.6;
-}
-
-/* Smooth transitions */
-button, a {
-  touch-action: manipulation;
 }
