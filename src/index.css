@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-bg-elder: #fcfbfa;
+    --color-text-elder: #0f172a;
+    --color-primary-elder: #064e3b;
+    --color-amber-elder: #d97706;
+  }
+
+  body {
+    background-color: #fcfbfa;
+    color: #0f172a;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Elder Accessibility Guarantees */
+.elder-tap-target {
+  min-height: 64px;
+  min-width: 64px;
+}
+
+.elder-body-text {
+  font-size: 1.25rem; /* 20px+ */
+  line-height: 1.6;
+}
+
+/* Smooth transitions */
+button, a {
+  touch-action: manipulation;
+}
