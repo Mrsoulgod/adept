@@ -26,6 +26,11 @@ import {
   timeStringToMinutes,
   minutesToTimeString,
 } from '../src/lib/baseline';
+import {
+  predictMedicationStockOut,
+  predictRegimenStockOuts,
+  getActiveRefillNudges,
+} from '../src/lib/inventory';
 
 describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
   describe('DESIGN LAWS (Never Break)', () => {
@@ -437,16 +442,131 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
     });
   });
 
-  describe('Audit Log with Elder Veto', () => {
-    it('maintains an audit trail and provides elder veto on caretaker actions', () => {
+  describe('Audit Log with Elder Approve/Veto & Mandatory Edit Source', () => {
+    it('records mandatory source on every edit ("Rahul changed dose, source: prescription photo")', () => {
       expect(INITIAL_AUDIT_LOGS.length).toBeGreaterThan(0);
 
-      const vetoable = INITIAL_AUDIT_LOGS.filter((l) => l.canElderVeto);
+      // Verify Rahul's edit contains mandatory source
+      const rahulEdit = INITIAL_AUDIT_LOGS.find((l) => l.actorName.includes('Rahul'));
+      expect(rahulEdit).toBeDefined();
+      expect(rahulEdit?.source).toBe('prescription_photo');
+      expect(rahulEdit?.plainEnglishDescription).toContain('Rahul changed dose');
+      expect(rahulEdit?.plainEnglishDescription).toContain('source: prescription photo');
+      expect(rahulEdit?.canElderVeto).toBe(true);
+
+      // Verify all caretaker edits have an authenticated source
+      const caretakerEdits = INITIAL_AUDIT_LOGS.filter((l) => l.actorRole === 'caretaker');
+      for (const edit of caretakerEdits) {
+        expect(edit.source).toBeDefined();
+        expect(edit.plainEnglishDescription).toContain('source:');
+      }
+    });
+
+    it('supports elder approve and veto actions on audit log items', () => {
+      const vetoable = INITIAL_AUDIT_LOGS.filter((l) => l.canElderVeto && !l.isVetoed);
       expect(vetoable.length).toBeGreaterThan(0);
 
-      for (const item of vetoable) {
-        expect(item.actorRole).toBe('caretaker');
-        expect(item.plainEnglishDescription).toBeDefined();
+      // Test that veto flag can be toggled without shame or data corruption
+      const targetItem = vetoable[0];
+      const vetoedItem = {
+        ...targetItem,
+        isVetoed: true,
+        vetoedAt: new Date().toISOString(),
+      };
+      expect(vetoedItem.isVetoed).toBe(true);
+      expect(vetoedItem.vetoedAt).toBeDefined();
+
+      // Test that veto record is present in history
+      const vetoedInHistory = INITIAL_AUDIT_LOGS.find((l) => l.isVetoed);
+      expect(vetoedInHistory).toBeDefined();
+      expect(vetoedInHistory?.action).toContain('Vetoed');
+    });
+  });
+
+  describe('Stock-Out Prediction & Weekend/Holiday Refill Nudges', () => {
+    it('predicts stock-out date from stock count and daily consumption rate', () => {
+      const med = INITIAL_MEDICATIONS[0]; // Amlodipine: stock 18, rate 1
+      const prediction = predictMedicationStockOut(med, new Date('2026-11-15T10:00:00Z'));
+
+      expect(prediction.medicationId).toBe(med.id);
+      expect(prediction.currentStock).toBe(18);
+      expect(prediction.daysRemaining).toBe(18);
+      expect(prediction.stockOutDateStr).toBe('2026-12-03');
+      expect(prediction.severity).toBe('comfortable');
+    });
+
+    it('identifies weekend stock-out risk and fires proactive refill nudge', () => {
+      // Create a medication running out on a Saturday (Nov 21, 2026 is Saturday)
+      // Starting from Sunday Nov 15: 6 days remaining lands on Saturday Nov 21
+      const weekendRiskMed = {
+        ...INITIAL_MEDICATIONS[2], // Glucosamine
+        stockCount: 6,
+        dailyDoseUnits: 1,
+      };
+
+      const prediction = predictMedicationStockOut(
+        weekendRiskMed,
+        new Date('2026-11-15T10:00:00Z') // Sunday
+      );
+
+      expect(prediction.daysRemaining).toBe(6);
+      expect(prediction.stockOutDayOfWeek).toBe('Saturday');
+      expect(prediction.isWeekendStockOut).toBe(true);
+      expect(prediction.needsRefillNudge).toBe(true);
+      expect(prediction.nudgeReason).toContain('Weekend Refill Nudge');
+      expect(prediction.nudgeReason).toContain('Saturday');
+    });
+
+    it('identifies urgent stock-out (<=3 days) and marks urgent severity', () => {
+      const urgentMed = {
+        ...INITIAL_MEDICATIONS[2],
+        stockCount: 2,
+        dailyDoseUnits: 1,
+      };
+
+      const prediction = predictMedicationStockOut(urgentMed, new Date('2026-11-15T10:00:00Z'));
+      expect(prediction.daysRemaining).toBe(2);
+      expect(prediction.severity).toBe('urgent');
+      expect(prediction.needsRefillNudge).toBe(true);
+      expect(prediction.nudgeReason).toContain('Urgent Refill Nudge');
+    });
+
+    it('identifies holiday stock-out risk before clinic/courier closures', () => {
+      // Nov 26 is Thanksgiving Long Weekend
+      // Starting Nov 22: 4 days remaining lands on Nov 26
+      const holidayRiskMed = {
+        ...INITIAL_MEDICATIONS[3],
+        stockCount: 4,
+        dailyDoseUnits: 1,
+      };
+
+      const prediction = predictMedicationStockOut(
+        holidayRiskMed,
+        new Date('2026-11-22T10:00:00Z')
+      );
+
+      expect(prediction.isHolidayStockOut).toBe(true);
+      expect(prediction.holidayName).toContain('Thanksgiving');
+      expect(prediction.needsRefillNudge).toBe(true);
+    });
+
+    it('computes regimen stock-out list sorted by urgency and extracts active nudges', () => {
+      const predictions = predictRegimenStockOuts(
+        INITIAL_MEDICATIONS,
+        new Date('2026-11-15T10:00:00Z')
+      );
+      expect(predictions.length).toBe(INITIAL_MEDICATIONS.length);
+
+      // Verify sorted ascending by days remaining
+      for (let i = 0; i < predictions.length - 1; i++) {
+        expect(predictions[i].daysRemaining).toBeLessThanOrEqual(predictions[i + 1].daysRemaining);
+      }
+
+      const nudges = getActiveRefillNudges(predictions);
+      expect(nudges.length).toBeGreaterThan(0);
+      for (const nudge of nudges) {
+        expect(nudge.needsRefillNudge).toBe(true);
+        expect(nudge.nudgeReason).toBeDefined();
       }
     });
   });

@@ -33,6 +33,7 @@ export const ElderScreen: React.FC = () => {
     recordSymptomCheckin,
     elderResolveProposal,
     elderVetoAction,
+    elderApproveAuditAction,
     auditLogs,
   } = useAdept();
 
@@ -339,25 +340,55 @@ export const ElderScreen: React.FC = () => {
                   key={log.id}
                   className="bg-[#FBF5EA] border-2 border-[#EBDBC1] rounded-3xl p-6 shadow-xs space-y-4"
                 >
-                  <span className="text-[#92631E] font-bold text-base block">
-                    {log.actorName}
-                  </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[#92631E] font-bold text-base">
+                      {log.actorName}
+                    </span>
+                    {log.source && (
+                      <span className="bg-white text-[#92631E] border border-[#EBDBC1] text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                        source: {log.sourceLabel || log.source}
+                      </span>
+                    )}
+                  </div>
+
                   <h3 className="text-2xl font-bold text-[#1A1D1A]">{log.action}</h3>
                   <p className="text-xl text-[#474C46] leading-relaxed">
                     {log.plainEnglishDescription}
                   </p>
 
-                  <button
-                    onClick={() => {
-                      elderVetoAction(log.id);
-                      setFeedbackNotice(`Vetoed: "${log.action}" has been completely rolled back.`);
-                      setActiveView('main');
-                    }}
-                    className="w-full min-h-[64px] bg-[#92631E] hover:bg-[#7A4F13] text-white text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-98 transition-all"
-                  >
-                    <RotateCcw className="w-6 h-6" />
-                    <span>{t.vetoBtn}</span>
-                  </button>
+                  <div className="space-y-3 pt-2">
+                    <button
+                      onClick={() => {
+                        elderApproveAuditAction(log.id);
+                        setFeedbackNotice(
+                          language === 'hi'
+                            ? `स्वीकृत! "${log.action}" दिनचर्या में जारी रहेगा।`
+                            : `Approved! "${log.action}" is kept in your routine.`
+                        );
+                        setActiveView('main');
+                      }}
+                      className="w-full min-h-[64px] bg-[#244937] hover:bg-[#1B3729] text-white text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-98 transition-all"
+                    >
+                      <CheckCircle2 className="w-6 h-6 text-emerald-300" />
+                      <span>{language === 'hi' ? 'हाँ, यह बदलाव ठीक है (स्वीकार)' : 'Keep this change (Approve)'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        elderVetoAction(log.id);
+                        setFeedbackNotice(
+                          language === 'hi'
+                            ? `वीटो किया गया: "${log.action}" तुरंत वापस ले लिया गया।`
+                            : `Vetoed: "${log.action}" has been completely rolled back.`
+                        );
+                        setActiveView('main');
+                      }}
+                      className="w-full min-h-[64px] bg-[#92631E] hover:bg-[#7A4F13] text-white text-xl font-bold rounded-2xl px-6 py-4 flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-98 transition-all"
+                    >
+                      <RotateCcw className="w-6 h-6" />
+                      <span>{language === 'hi' ? 'नहीं, इसे रद्द करें (वीटो)' : 'Veto this change (Rollback)'}</span>
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

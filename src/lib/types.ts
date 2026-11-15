@@ -84,7 +84,29 @@ export interface Member {
   createdAt: string;
 }
 
-export type MedicationSource = 'doctor_rx_ocr' | 'caretaker_manual' | 'ai_proposal';
+export type MedicationSource =
+  | 'prescription_photo'
+  | 'doctor_visit_voice'
+  | 'physician_phone_order'
+  | 'caretaker_manual'
+  | 'lab_review'
+  | 'doctor_rx_ocr'
+  | 'ai_proposal';
+
+export type EditSource =
+  | 'prescription_photo'
+  | 'doctor_visit_voice'
+  | 'physician_phone_order'
+  | 'caretaker_manual'
+  | 'lab_review';
+
+export const EDIT_SOURCE_LABELS: Record<EditSource, string> = {
+  prescription_photo: 'prescription photo',
+  doctor_visit_voice: 'doctor visit voice',
+  physician_phone_order: 'physician phone order',
+  caretaker_manual: 'caretaker manual',
+  lab_review: 'lab review',
+};
 
 export interface Medication {
   id: string;
@@ -96,8 +118,10 @@ export interface Medication {
   mealAnchor: MealAnchor;
   windowStart?: string; // e.g. "07:00"
   windowEnd?: string;   // e.g. "10:00"
-  stockCount?: number;  // e.g. 30
-  source?: MedicationSource;
+  stockCount?: number;  // e.g. 14 pills
+  dailyDoseUnits?: number; // e.g. 1 pill / day
+  source?: EditSource | MedicationSource; // Mandatory source for every edit
+  lastRefillDate?: string;
   shapeDescription: string; // e.g. "Round white pill with line"
   color: string;        // e.g. "#3b82f6"
   purpose: string;      // e.g. "Keeps your blood pressure steady"
@@ -187,12 +211,31 @@ export interface AuditLogItem {
   actorRole: Role;
   actorName: string;
   action: string;
+  source?: EditSource;
+  sourceLabel?: string;
   plainEnglishDescription: string;
   timestamp: string;
   canElderVeto: boolean;
   isVetoed: boolean;
   vetoedAt?: string;
   revertedPayload?: string;
+}
+
+export interface StockPrediction {
+  medicationId: string;
+  medicationName: string;
+  friendlyName: string;
+  currentStock: number;
+  dailyRate: number;
+  daysRemaining: number;
+  stockOutDateStr: string;     // e.g. "2026-11-21"
+  stockOutDayOfWeek: string;   // e.g. "Saturday"
+  isWeekendStockOut: boolean;  // True if falls on Saturday or Sunday
+  isHolidayStockOut: boolean;  // True if near holiday / bank closure
+  holidayName?: string;
+  needsRefillNudge: boolean;
+  nudgeReason?: string;
+  severity: 'urgent' | 'warning' | 'comfortable';
 }
 
 export interface SymptomTrendData {

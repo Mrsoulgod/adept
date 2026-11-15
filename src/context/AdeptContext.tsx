@@ -7,8 +7,9 @@ import type {
   AIProposal,
   AuditLogItem,
   MealAnchor,
+  EditSource,
 } from '../lib/types';
-import { MEAL_ANCHORS } from '../lib/types';
+import { MEAL_ANCHORS, EDIT_SOURCE_LABELS } from '../lib/types';
 import {
   INITIAL_PROFILE,
   INITIAL_MEDICATIONS,
@@ -52,9 +53,11 @@ interface AdeptContextType {
   recordSymptomCheckin: (wellnessScore: 'great' | 'steady' | 'tired' | 'discomfort', notes?: string) => void;
   elderResolveProposal: (proposalId: string, accept: boolean) => void;
   elderVetoAction: (auditLogId: string) => void;
+  elderApproveAuditAction: (auditLogId: string) => void;
   // Caretaker Actions
   createProposalFromAI: (proposal: Omit<AIProposal, 'id' | 'createdAt' | 'status'>) => void;
-  addOrUpdateMedication: (medication: Medication) => void;
+  addOrUpdateMedication: (medication: Medication, source?: EditSource, actorName?: string) => void;
+  refillMedication: (medicationId: string, amount?: number, actorName?: string) => void;
   triggerCaregiverDigest: (targetEmail?: string) => Promise<EmailDispatchResult>;
   triggerDeviationAlert: (mealAnchor: MealAnchor) => Promise<EmailDispatchResult>;
   // Settings & Utilities
@@ -433,28 +436,110 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAuditLogs((prev) => [auditItem, ...prev]);
   };
 
-  // 6. CARETAKER ACTION: Add/Update Medication Schedule
-  const addOrUpdateMedication = (med: Medication) => {
+  // 6. CARETAKER ACTION: Add/Update Medication Schedule (Mandatory Source)
+  const addOrUpdateMedication = (
+    med: Medication,
+    source?: EditSource,
+    actorName?: string
+  ) => {
+    const editSource: EditSource = source || (med.source as EditSource) || 'prescription_photo';
+    const sourceLabel = EDIT_SOURCE_LABELS[editSource] || 'prescription photo';
+    const actor = actorName || 'Rahul (Caretaker)';
+
+    const completeMed: Medication = {
+      ...med,
+      source: editSource,
+      stockCount: med.stockCount !== undefined ? med.stockCount : 30,
+      dailyDoseUnits: med.dailyDoseUnits || 1,
+    };
+
     setMedications((prev) => {
-      const exists = prev.some((m) => m.id === med.id);
+      const exists = prev.some((m) => m.id === completeMed.id);
       if (exists) {
-        return prev.map((m) => (m.id === med.id ? med : m));
+        return prev.map((m) => (m.id === completeMed.id ? completeMed : m));
       }
-      return [...prev, med];
+      return [...prev, completeMed];
     });
+
+    const isEdit = medications.some((m) => m.id === completeMed.id);
+    const actionText = isEdit
+      ? `Changed dose of ${completeMed.friendlyName}`
+      : `Added Medication: ${completeMed.friendlyName}`;
+
+    // Plain English audit description: "Rahul changed dose, source: prescription photo"
+    const plainDesc = isEdit
+      ? `${actor} changed dose of ${completeMed.friendlyName} to ${completeMed.dosage}, source: ${sourceLabel}.`
+      : `${actor} added ${completeMed.friendlyName} (${completeMed.dosage}), source: ${sourceLabel}.`;
 
     const auditItem: AuditLogItem = {
       id: `audit-${Date.now()}`,
       actorRole: 'caretaker',
-      actorName: `${profile.caretakerName}`,
-      action: `Saved Medication: ${med.friendlyName}`,
-      plainEnglishDescription: `Schedule configured for ${med.friendlyName} with meal anchor: ${MEAL_ANCHORS[med.mealAnchor]?.label}.`,
+      actorName: actor,
+      action: actionText,
+      source: editSource,
+      sourceLabel,
+      plainEnglishDescription: plainDesc,
       timestamp: new Date().toISOString(),
       canElderVeto: true,
       isVetoed: false,
-      revertedPayload: med.id,
+      revertedPayload: completeMed.id,
     };
     setAuditLogs((prev) => [auditItem, ...prev]);
+  };
+
+  // 6b. CARETAKER/FAMILY ACTION: Refill Medication Inventory
+  const refillMedication = (
+    medicationId: string,
+    amount: number = 30,
+    actorName: string = 'Rahul (Caretaker)'
+  ) => {
+    const med = medications.find((m) => m.id === medicationId);
+    if (!med) return;
+
+    setMedications((prev) =>
+      prev.map((m) => {
+        if (m.id === medicationId) {
+          return {
+            ...m,
+            stockCount: (m.stockCount || 0) + amount,
+            lastRefillDate: new Date().toISOString().split('T')[0],
+          };
+        }
+        return m;
+      })
+    );
+
+    const auditItem: AuditLogItem = {
+      id: `audit-${Date.now()}`,
+      actorRole: 'caretaker',
+      actorName: actorName,
+      action: `Refilled stock for ${med.friendlyName} (+${amount} pills)`,
+      source: 'prescription_photo',
+      sourceLabel: 'prescription photo',
+      plainEnglishDescription: `${actorName} recorded refill delivery of +${amount} pills for ${med.friendlyName}, source: prescription photo.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: true,
+      isVetoed: false,
+    };
+    setAuditLogs((prev) => [auditItem, ...prev]);
+  };
+
+  // 6c. ELDER ACTION: Approve / Keep Audit Action
+  const elderApproveAuditAction = (auditLogId: string) => {
+    const item = auditLogs.find((a) => a.id === auditLogId);
+    if (!item) return;
+
+    const approvalNotice: AuditLogItem = {
+      id: `audit-${Date.now()}`,
+      actorRole: 'elder',
+      actorName: `${profile.name} (Approved)`,
+      action: `Affirmed: ${item.action}`,
+      plainEnglishDescription: `Arthur reviewed "${item.action}" and affirmed keeping it active in his routine.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    };
+    setAuditLogs((prev) => [approvalNotice, ...prev]);
   };
 
   // 7. HERO FEATURE: Dispatch Caregiver Digest Email via Resend
@@ -562,8 +647,10 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordSymptomCheckin,
         elderResolveProposal,
         elderVetoAction,
+        elderApproveAuditAction,
         createProposalFromAI,
         addOrUpdateMedication,
+        refillMedication,
         triggerCaregiverDigest,
         triggerDeviationAlert,
         updateSettings,

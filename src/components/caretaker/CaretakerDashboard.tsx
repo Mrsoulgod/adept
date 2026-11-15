@@ -5,6 +5,8 @@ import { MEAL_ANCHORS } from '../../lib/types';
 import { PrescriptionScanner } from './PrescriptionScanner';
 import { PostVisitVoiceModal } from './PostVisitVoiceModal';
 import { BaselineDeviationView } from './BaselineDeviationView';
+import { StockPredictionView } from './StockPredictionView';
+import { AuditLogView } from './AuditLogView';
 import { CaregiverDigestModal } from './CaregiverDigestModal';
 import { PreVisitBriefModal } from './PreVisitBriefModal';
 import { ScheduleEditor } from './ScheduleEditor';
@@ -181,6 +183,12 @@ export const CaretakerDashboard: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* PHARMACY INVENTORY & STOCK-OUT PREDICTIONS WITH REFILL NUDGES */}
+      <StockPredictionView />
+
+      {/* HOUSEHOLD GOVERNANCE & AUDIT LEDGER WITH ELDER VETO */}
+      <AuditLogView />
 
       {/* Modals */}
       {scannerOpen && <PrescriptionScanner onClose={() => setScannerOpen(false)} />}
