@@ -6,6 +6,7 @@ import { CaregiverDigestModal } from '../CaregiverDigestModal';
 import { ElderSelectorBar } from '../../shared/ElderSelectorBar';
 import { CareCircleChatModal } from '../../chat/CareCircleChatModal';
 import { VitalsScreen } from '../../vitals/VitalsScreen';
+import { CognitiveTrendsSection } from '../../shared/CognitiveTrendsSection';
 import { Sparkles, MessageCircle, AlertOctagon, PhoneCall, Activity } from 'lucide-react';
 
 export const CaretakerTodayTab: React.FC = () => {
@@ -164,6 +165,9 @@ export const CaretakerTodayTab: React.FC = () => {
       <div id="caretaker-timeline-section" className="space-y-3">
         <BaselineDeviationView onOpenDigest={() => setDigestOpen(true)} />
       </div>
+
+      {/* Prompt 18: Caretaker Cognitive Trends & Doctor Alert Section */}
+      <CognitiveTrendsSection role="caretaker" />
 
       {digestOpen && <CaregiverDigestModal onClose={() => setDigestOpen(false)} />}
 

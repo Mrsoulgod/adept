@@ -351,7 +351,11 @@ export type EventType =
   | 'sos_resolved'
   | 'note'
   | 'ai_question'
-  | 'safety_checked';
+  | 'safety_checked'
+  | 'cog_event'
+  | 'hydration_logged'
+  | 'activity_logged'
+  | 'reminder_configured';
 
 export interface AdeptEvent {
   id: string;
@@ -496,5 +500,117 @@ export interface AdeptAiMessage {
   isEmergency?: boolean;
   timestamp: string;
 }
+
+// ---------------------------------------------------------------------
+// PROMPT 15: MEMORY LANE & COGNITIVE GAMES
+// ---------------------------------------------------------------------
+export interface MemoryLanePhoto {
+  id: string;
+  elderId: string;
+  photoUrl: string;
+  name: string;
+  relationship: string;
+  caption: string;
+  captionHi?: string;
+  voiceAudioUrl?: string; // audio dataUrl or audio url
+  createdAt: string;
+}
+
+export type CogGameType = 'memory_lane' | 'routine_recall';
+
+export interface CogEventPayload {
+  game: CogGameType;
+  item: string;
+  correct: boolean;
+  responseMs: number;
+  hintUsed: boolean;
+  level: number;
+  elderLanguage?: 'en' | 'hi';
+}
+
+export interface CognitiveGameLevel {
+  game: CogGameType;
+  level: number; // 1 - 5
+  consecutiveCorrect: number;
+  consecutiveWrong: number;
+  history: Array<{
+    timestamp: string;
+    level: number;
+    correct: boolean;
+    responseMs: number;
+    hintUsed: boolean;
+  }>;
+}
+
+export interface CognitiveMetrics {
+  level: number;
+  levelHistory: Array<{ date: string; level: number }>;
+  weeklySessions: number;
+  accuracyWeekly: number; // 0 - 100%
+  avgResponseTimeMs: number;
+  bestTimeOfDay: string; // e.g. "Morning (9:00 AM – 11:30 AM)"
+  streakDays: number;
+  sustainedDropDetected: boolean;
+  baselineAccuracy: number;
+  dropDurationDays: number;
+  alertMessage?: string; // "Worth mentioning to the doctor"
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 16: ROUTINE RECALL QUESTION
+// ---------------------------------------------------------------------
+export interface RoutineRecallQuestion {
+  id: string;
+  questionText: string;
+  questionTextHi: string;
+  category: 'medication_routine' | 'recent_event' | 'meal_anchor';
+  options: Array<{
+    id: string;
+    text: string;
+    textHi: string;
+    isCorrect: boolean;
+    color?: string;
+    iconName?: string;
+  }>;
+  hint: string;
+  hintHi: string;
+  explanation: string;
+  explanationHi: string;
+  sourceFact: string;
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 20: HYDRATION & DAILY ACTIVITY REMINDERS
+// ---------------------------------------------------------------------
+export type ActivityType = 'hydration' | 'walk' | 'call' | 'custom';
+
+export interface DailyActivityReminder {
+  id: string;
+  elderId: string;
+  type: ActivityType;
+  title: string;
+  titleHi: string;
+  description: string;
+  descriptionHi: string;
+  timeAnchor: 'morning' | 'midday' | 'evening' | 'bedtime';
+  scheduledTime: string; // e.g. "10:30 AM"
+  isCompletedToday: boolean;
+  completedAt?: string;
+  dailyTarget?: number; // e.g. 6 glasses
+  currentProgress?: number; // e.g. 4 glasses completed
+  icon: string;
+  isConfigurable: boolean;
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 19: OFFLINE-FIRST EVENT QUEUE
+// ---------------------------------------------------------------------
+export interface QueuedOfflineEvent {
+  clientUuid: string;
+  event: Omit<AdeptEvent, 'id' | 'createdAt'>;
+  queuedAt: string;
+  retryCount: number;
+}
+
 
 

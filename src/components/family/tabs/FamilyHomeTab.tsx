@@ -6,6 +6,7 @@ import { ElderPairingModal } from '../ElderPairingModal';
 import { CareCircleChatModal } from '../../chat/CareCircleChatModal';
 import { FamilyVoiceRecorderModal } from '../FamilyVoiceRecorderModal';
 import { VitalsScreen } from '../../vitals/VitalsScreen';
+import { CognitiveTrendsSection } from '../../shared/CognitiveTrendsSection';
 import {
   ShieldCheck,
   Clock,
@@ -367,6 +368,9 @@ export const FamilyHomeTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Prompt 18: Cognitive Trends & Memory Rhythm Section */}
+      <CognitiveTrendsSection role="family" />
 
       {/* Pairing Modal */}
       {pairingModalOpen && (

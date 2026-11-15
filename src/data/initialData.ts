@@ -9,6 +9,9 @@ import type {
   VitalRecord,
   FamilyVoiceNote,
   IncidentRecord,
+  MemoryLanePhoto,
+  DailyActivityReminder,
+  CognitiveGameLevel,
 } from '../lib/types';
 
 export const INITIAL_ELDERS: Profile[] = [
@@ -626,6 +629,182 @@ export const INITIAL_FAMILY_VOICE_NOTES: FamilyVoiceNote[] = [
 // PROMPT 12: INITIAL INCIDENTS
 // ---------------------------------------------------------------------
 export const INITIAL_INCIDENTS: IncidentRecord[] = [];
+
+// ---------------------------------------------------------------------
+// PROMPT 15: MEMORY LANE INITIAL PHOTOS
+// ---------------------------------------------------------------------
+export const INITIAL_MEMORY_LANE_PHOTOS: MemoryLanePhoto[] = [
+  {
+    id: 'photo-1',
+    elderId: 'elder-dad',
+    name: 'Rahul',
+    relationship: 'Grandson',
+    photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=600&q=80',
+    caption: 'Rahul showing his school soccer trophy after winning the championship!',
+    captionHi: 'राहुल अपने स्कूल सॉकर ट्रॉफी के साथ, सप्ताहांत मैच जीतने के बाद!',
+    voiceAudioUrl: '',
+    createdAt: '2026-11-10T10:00:00Z',
+  },
+  {
+    id: 'photo-2',
+    elderId: 'elder-dad',
+    name: 'Sarah',
+    relationship: 'Daughter',
+    photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=600&q=80',
+    caption: 'Sarah enjoying warm afternoon tea with you in the sunny garden.',
+    captionHi: 'सारा आपके साथ बाथ के बगीचे में दोपहर की चाय पीते हुए।',
+    voiceAudioUrl: '',
+    createdAt: '2026-11-08T15:30:00Z',
+  },
+  {
+    id: 'photo-3',
+    elderId: 'elder-dad',
+    name: 'James',
+    relationship: 'Son',
+    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80',
+    caption: 'James during your favorite coastal family walk along the seaside.',
+    captionHi: 'जेम्स आपके पसंदीदा समुद्र तटीय सैर के दौरान।',
+    voiceAudioUrl: '',
+    createdAt: '2026-11-05T12:00:00Z',
+  },
+  {
+    id: 'photo-4',
+    elderId: 'elder-dad',
+    name: 'Maya',
+    relationship: 'Granddaughter',
+    photoUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80',
+    caption: 'Little Maya practicing her violin song that always brings a warm smile.',
+    captionHi: 'छोटी माया अपने वायलिन पर मधुर धुन बजाते हुए।',
+    voiceAudioUrl: '',
+    createdAt: '2026-11-01T16:00:00Z',
+  },
+  {
+    id: 'photo-5',
+    elderId: 'elder-dad',
+    name: 'Dr. Vance',
+    relationship: 'Family Doctor',
+    photoUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=600&q=80',
+    caption: 'Dr. Evelyn Vance, who has cared for your health and heart with warmth.',
+    captionHi: 'डॉ. एवलिन वेंस, जो वर्षों से आपके स्वास्थ्य और दिल की देखभाल कर रही हैं।',
+    voiceAudioUrl: '',
+    createdAt: '2026-10-25T11:00:00Z',
+  },
+];
+
+// ---------------------------------------------------------------------
+// PROMPT 17: INITIAL ADAPTIVE COGNITIVE LEVELS
+// ---------------------------------------------------------------------
+export const INITIAL_COGNITIVE_LEVELS: Record<string, CognitiveGameLevel> = {
+  memory_lane: {
+    game: 'memory_lane',
+    level: 2,
+    consecutiveCorrect: 1,
+    consecutiveWrong: 0,
+    history: [
+      { timestamp: '2026-11-12T10:30:00Z', level: 2, correct: true, responseMs: 4200, hintUsed: false },
+      { timestamp: '2026-11-13T10:45:00Z', level: 2, correct: true, responseMs: 3800, hintUsed: false },
+      { timestamp: '2026-11-14T11:15:00Z', level: 2, correct: true, responseMs: 4100, hintUsed: false },
+    ],
+  },
+  routine_recall: {
+    game: 'routine_recall',
+    level: 2,
+    consecutiveCorrect: 2,
+    consecutiveWrong: 0,
+    history: [
+      { timestamp: '2026-11-12T10:35:00Z', level: 2, correct: true, responseMs: 3900, hintUsed: false },
+      { timestamp: '2026-11-13T10:50:00Z', level: 2, correct: true, responseMs: 3600, hintUsed: false },
+      { timestamp: '2026-11-14T11:20:00Z', level: 2, correct: true, responseMs: 3500, hintUsed: false },
+    ],
+  },
+};
+
+// ---------------------------------------------------------------------
+// PROMPT 20: INITIAL HYDRATION & DAILY ACTIVITY REMINDERS
+// ---------------------------------------------------------------------
+export const INITIAL_DAILY_REMINDERS: DailyActivityReminder[] = [
+  {
+    id: 'rem-water-1',
+    elderId: 'elder-dad',
+    type: 'hydration',
+    title: 'Morning Glass of Water',
+    titleHi: 'सुबह का पानी (1 गिलास)',
+    description: 'A gentle glass of warm or room temperature water to start your day.',
+    descriptionHi: 'दिन की शुरुआत करने के लिए एक गिलास ताज़ा या गुनगुना पानी।',
+    timeAnchor: 'morning',
+    scheduledTime: '10:00 AM',
+    isCompletedToday: true,
+    completedAt: '2026-11-15T09:15:00Z',
+    dailyTarget: 6,
+    currentProgress: 3,
+    icon: 'Droplets',
+    isConfigurable: true,
+  },
+  {
+    id: 'rem-walk-1',
+    elderId: 'elder-dad',
+    type: 'walk',
+    title: '15-Minute Garden Stroll',
+    titleHi: '15 मिनट की बगीचे की सैर',
+    description: 'A relaxed, easy walk in the fresh air to keep your knee joints loose and comfortable.',
+    descriptionHi: 'घुटनों को हल्का और लचीला रखने के लिए खुली हवा में आरामदायक सैर।',
+    timeAnchor: 'morning',
+    scheduledTime: '11:30 AM',
+    isCompletedToday: false,
+    dailyTarget: 1,
+    currentProgress: 0,
+    icon: 'Footprints',
+    isConfigurable: true,
+  },
+  {
+    id: 'rem-water-2',
+    elderId: 'elder-dad',
+    type: 'hydration',
+    title: 'Afternoon Hydration',
+    titleHi: 'दोपहर का पानी',
+    description: 'Keep hydrated after midday lunch with a glass of water.',
+    descriptionHi: 'दोपहर के भोजन के बाद शरीर में पानी की मात्रा संतुलित रखें।',
+    timeAnchor: 'midday',
+    scheduledTime: '2:30 PM',
+    isCompletedToday: false,
+    dailyTarget: 6,
+    currentProgress: 3,
+    icon: 'Droplets',
+    isConfigurable: true,
+  },
+  {
+    id: 'rem-call-1',
+    elderId: 'elder-dad',
+    type: 'call',
+    title: 'Call or Say Hello to Sarah',
+    titleHi: 'सारा से बात करें / हैलो कहें',
+    description: 'Share a relaxed 5-minute chat with your daughter.',
+    descriptionHi: 'अपनी बेटी सारा के साथ 5 मिनट का सुखद संवाद साझा करें।',
+    timeAnchor: 'evening',
+    scheduledTime: '4:30 PM',
+    isCompletedToday: false,
+    dailyTarget: 1,
+    currentProgress: 0,
+    icon: 'PhoneCall',
+    isConfigurable: true,
+  },
+  {
+    id: 'rem-water-3',
+    elderId: 'elder-dad',
+    type: 'hydration',
+    title: 'Evening Warm Water',
+    titleHi: 'शाम का गुनगुना पानी',
+    description: 'A small glass of water before dinner.',
+    descriptionHi: 'रात के खाने से पहले एक छोटा गिलास पानी।',
+    timeAnchor: 'evening',
+    scheduledTime: '7:30 PM',
+    isCompletedToday: false,
+    dailyTarget: 6,
+    currentProgress: 3,
+    icon: 'Droplets',
+    isConfigurable: true,
+  },
+];
 
 // ---------------------------------------------------------------------
 // PROMPT 7: DATA SPINE INITIAL EVENTS (Single Source of Truth)

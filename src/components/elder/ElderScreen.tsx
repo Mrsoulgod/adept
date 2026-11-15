@@ -18,6 +18,10 @@ import {
   PhoneCall,
   LogOut,
   VolumeX,
+  Droplets,
+  Footprints,
+  WifiOff,
+  Check,
 } from 'lucide-react';
 import { EmergencySosModal } from '../emergency/EmergencySosModal';
 import { CareCircleChatModal } from '../chat/CareCircleChatModal';
@@ -54,6 +58,11 @@ export const ElderScreen: React.FC = () => {
     logoutUser,
     isAiSoundEnabled,
     toggleAiSound,
+    isOffline,
+    offlineQueueCount,
+    dailyActivityReminders,
+    logHydration,
+    logDailyActivity,
   } = useAdept();
 
   const [activeView, setActiveView] = useState<'main' | 'veto'>('main');
@@ -665,10 +674,29 @@ export const ElderScreen: React.FC = () => {
       <div className="space-y-6">
         {/* Top Header: Time-aware greeting & Hindi/English Toggle */}
         <header className="pt-2">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="inline-flex items-center gap-2 bg-[#EAF2EC] border border-[#C6DBD0] text-[#244937] px-3.5 py-1 rounded-full text-base font-bold">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#244937] animate-pulse" />
-              <span>{nextPendingMed ? t.windowOpen : t.allCalm}</span>
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="inline-flex items-center gap-2 bg-[#EAF2EC] border border-[#C6DBD0] text-[#244937] px-3.5 py-1 rounded-full text-base font-bold">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#244937] animate-pulse" />
+                <span>{nextPendingMed ? t.windowOpen : t.allCalm}</span>
+              </div>
+
+              {/* Prompt 19: Tiny Offline Resilience Indicator */}
+              {isOffline && (
+                <div
+                  id="elder-offline-indicator"
+                  className="inline-flex items-center gap-1.5 bg-amber-100 border border-amber-300 text-amber-950 px-2.5 py-1 rounded-full text-xs font-bold animate-in fade-in"
+                  title="Offline: events safely queued in IndexedDB with client-generated UUIDs"
+                >
+                  <WifiOff className="w-3.5 h-3.5 text-amber-700" />
+                  <span>{language === 'hi' ? 'सहेजा गया, सिंक होगा' : 'Saved, will sync'}</span>
+                  {offlineQueueCount > 0 && (
+                    <span className="bg-amber-300 text-amber-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                      {offlineQueueCount}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -1109,6 +1137,167 @@ export const ElderScreen: React.FC = () => {
               );
             })()}
           </div>
+        </section>
+
+        {/* PROMPT 20: HYDRATION & DAILY ROUTINE ACTIVITIES */}
+        <section id="elder-hydration-activities" className="bg-white border border-[#EAE5DB] rounded-3xl p-6 shadow-xs space-y-5">
+          {/* Hydration Widget */}
+          {(() => {
+            const hydrationRem = dailyActivityReminders.find((r) => r.type === 'hydration');
+            const target = hydrationRem?.dailyTarget || 6;
+            const progress = hydrationRem?.currentProgress || 0;
+            const isCompleted = progress >= target;
+
+            return (
+              <div className="bg-cyan-50/70 border border-cyan-200/80 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-800 flex items-center justify-center">
+                      <Droplets className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-bold text-slate-900">
+                        {language === 'hi' ? 'दैनिक जल सेवन' : 'Daily Hydration'}
+                      </h4>
+                      <p className="text-xs text-slate-500 font-medium">
+                        {progress} / {target} {language === 'hi' ? 'गिलास पूरे हुए' : 'glasses today'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isCompleted && (
+                    <span className="text-xs font-bold bg-cyan-200 text-cyan-950 px-2.5 py-1 rounded-full flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{language === 'hi' ? 'लक्ष्य पूरा' : 'Goal met'}</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Droplets row visualization */}
+                <div className="flex items-center justify-between gap-1.5 py-1">
+                  {Array.from({ length: target }).map((_, idx) => {
+                    const isFilled = idx < progress;
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex-1 h-8 rounded-lg flex items-center justify-center transition-all ${
+                          isFilled
+                            ? 'bg-cyan-600 text-white shadow-xs'
+                            : 'bg-white border border-cyan-200 text-cyan-300'
+                        }`}
+                      >
+                        <Droplets className="w-4 h-4 fill-current" />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 1-Tap Drink Water Button (Min 56px touch target) */}
+                <button
+                  id="elder-log-water-btn"
+                  onClick={() => {
+                    logHydration(1);
+                    setFeedbackNotice(
+                      language === 'hi'
+                        ? 'बहुत बढ़िया! 1 गिलास पानी दर्ज कर लिया गया।'
+                        : 'Refreshing! 1 glass of water recorded.'
+                    );
+                  }}
+                  className="w-full min-h-[58px] bg-cyan-700 hover:bg-cyan-800 text-white font-bold text-lg rounded-xl flex items-center justify-center gap-2.5 shadow-sm active:scale-98 transition-all cursor-pointer"
+                >
+                  <Droplets className="w-5 h-5 fill-current" />
+                  <span>
+                    {language === 'hi'
+                      ? 'पानी पिया • 1 गिलास दर्ज करें'
+                      : 'Drank Water • Log 1 Glass 💧'}
+                  </span>
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Daily Routine Activities (Walk, Call, etc.) */}
+          {(() => {
+            const nonHydration = dailyActivityReminders.filter((r) => r.type !== 'hydration');
+            if (nonHydration.length === 0) return null;
+
+            return (
+              <div className="space-y-2.5 pt-1">
+                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wide">
+                  {language === 'hi' ? 'आज की गतिविधियां' : 'Daily Routine Activities'}
+                </h4>
+
+                <div className="space-y-2.5">
+                  {nonHydration.map((rem) => {
+                    return (
+                      <div
+                        key={rem.id}
+                        className={`p-3.5 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 ${
+                          rem.isCompletedToday
+                            ? 'bg-emerald-50/70 border-emerald-300'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              rem.isCompletedToday
+                                ? 'bg-emerald-200 text-emerald-900'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {rem.type === 'walk' ? (
+                              <Footprints className="w-5 h-5" />
+                            ) : rem.type === 'call' ? (
+                              <PhoneCall className="w-5 h-5" />
+                            ) : (
+                              <Sparkles className="w-5 h-5" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <h5 className="font-bold text-base text-slate-900 leading-snug truncate">
+                              {language === 'hi' ? rem.titleHi : rem.title}
+                            </h5>
+                            <p className="text-xs text-slate-500 font-medium">
+                              {rem.scheduledTime} • {language === 'hi' ? rem.descriptionHi : rem.description}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 1-Tap Toggle (Min 56px touch target) */}
+                        <button
+                          onClick={() => {
+                            if (!rem.isCompletedToday) {
+                              logDailyActivity(rem.id);
+                              setFeedbackNotice(
+                                language === 'hi'
+                                  ? `${rem.titleHi} पूरी हो गई!`
+                                  : `Completed: ${rem.title}!`
+                              );
+                            }
+                          }}
+                          className={`min-h-[52px] px-4 rounded-xl font-bold text-sm flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                            rem.isCompletedToday
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-default'
+                              : 'bg-[#244937] hover:bg-[#1B3729] text-white shadow-xs active:scale-98'
+                          }`}
+                        >
+                          {rem.isCompletedToday ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                              <span>{language === 'hi' ? 'पूर्ण ✓' : 'Done ✓'}</span>
+                            </>
+                          ) : (
+                            <span>{language === 'hi' ? 'पूरा हुआ' : 'Mark Done'}</span>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </section>
 
         {/* HERO 4: ONE QUESTION DAILY "HOW DO YOU FEEL?" (4 FACES) */}

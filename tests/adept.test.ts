@@ -1249,6 +1249,182 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
         expect(lovedNote.lovedReply).toBe(true);
       });
     });
+
+    describe('Prompt 15: Mind tab + Memory Lane', () => {
+      it('initializes family photos with name, relationship, caption and optional voice caption', async () => {
+        const { INITIAL_MEMORY_LANE_PHOTOS } = await import('../src/data/initialData');
+        expect(INITIAL_MEMORY_LANE_PHOTOS.length).toBeGreaterThanOrEqual(3);
+
+        const rahulPhoto = INITIAL_MEMORY_LANE_PHOTOS.find((p) => p.name === 'Rahul');
+        expect(rahulPhoto).toBeDefined();
+        expect(rahulPhoto?.relationship).toBe('Grandson');
+        expect(rahulPhoto?.caption).toContain('soccer');
+        expect(rahulPhoto?.captionHi).toBeDefined();
+      });
+
+      it('guarantees never a failure state on mistakes: provides gentle clues instead', async () => {
+        const { calculateNextDifficulty } = await import('../src/lib/cognitiveEngine');
+        const levelData = {
+          game: 'memory_lane' as const,
+          level: 2,
+          consecutiveCorrect: 0,
+          consecutiveWrong: 0,
+          history: [],
+        };
+
+        const result = calculateNextDifficulty(levelData, false, 3500, true);
+        // Encouragement must be warm and never use failure words
+        expect(result.encouragementMessage.toLowerCase()).not.toContain('fail');
+        expect(result.encouragementMessage.toLowerCase()).not.toContain('wrong');
+        expect(result.encouragementMessage.toLowerCase()).not.toContain('incorrect');
+        expect(result.encouragementMessage).toContain('gentle clue');
+      });
+    });
+
+    describe('Prompt 16: Routine Recall (data-driven)', () => {
+      it('generates questions from real medication schedule and dose logs', async () => {
+        const { generateRoutineRecallQuestions } = await import('../src/lib/cognitiveEngine');
+        const { INITIAL_MEDICATIONS, getInitialDoseLogs } = await import('../src/data/initialData');
+
+        const questions = generateRoutineRecallQuestions(
+          INITIAL_MEDICATIONS,
+          getInitialDoseLogs(),
+          'Arthur'
+        );
+
+        expect(questions.length).toBeGreaterThan(0);
+        const lunchQ = questions.find((q) => q.category === 'medication_routine');
+        expect(lunchQ).toBeDefined();
+        expect(lunchQ?.options.length).toBe(3);
+        const correctOpt = lunchQ?.options.find((o) => o.isCorrect);
+        expect(correctOpt).toBeDefined();
+        expect(correctOpt?.text).toContain('Glucosamine');
+      });
+    });
+
+    describe('Prompt 17: Adaptive Difficulty Engine', () => {
+      it('elevates level after 3 consecutive correct (no hint, <8s)', async () => {
+        const { calculateNextDifficulty } = await import('../src/lib/cognitiveEngine');
+        let current = {
+          game: 'memory_lane' as const,
+          level: 2,
+          consecutiveCorrect: 2,
+          consecutiveWrong: 0,
+          history: [],
+        };
+
+        // 3rd consecutive correct with no hint and fast latency
+        const updated = calculateNextDifficulty(current, true, 2500, false);
+        expect(updated.nextLevel).toBe(3);
+        expect(updated.consecutiveCorrect).toBe(0);
+      });
+
+      it('drops level gently after 2 consecutive wrong but never lower than level 1', async () => {
+        const { calculateNextDifficulty } = await import('../src/lib/cognitiveEngine');
+        let current = {
+          game: 'memory_lane' as const,
+          level: 2,
+          consecutiveCorrect: 0,
+          consecutiveWrong: 1,
+          history: [],
+        };
+
+        const updated = calculateNextDifficulty(current, false, 4000, true);
+        expect(updated.nextLevel).toBe(1);
+      });
+
+      it('validates generated JSON questions from Gemini schema strictly', async () => {
+        const { validateGeneratedQuestions } = await import('../src/lib/cognitiveEngine');
+
+        const sampleJson = [
+          {
+            questionText: 'Who is with you in the sunny garden?',
+            questionTextHi: 'धूप वाले बगीचे में आपके साथ कौन है?',
+            category: 'family_memory',
+            correctChoice: 'Sarah (Daughter)',
+            choice2: 'Neighbor',
+            choice3: 'Postman',
+            gentleHint: 'Hint: Sarah enjoys afternoon tea with you.',
+            captionStory: 'Sarah visiting on a warm Sunday.',
+          },
+        ];
+
+        const validated = validateGeneratedQuestions(sampleJson);
+        expect(validated.length).toBe(1);
+        expect(validated[0].correctChoice).toBe('Sarah (Daughter)');
+      });
+    });
+
+    describe('Prompt 18: Caretaker Cognitive Trends & Baseline Alerts', () => {
+      it('calculates weekly engagement, accuracy %, and best time of day', async () => {
+        const { computeCognitiveMetrics } = await import('../src/lib/cognitiveEngine');
+        const { getInitialEvents } = await import('../src/data/initialData');
+
+        const metrics = computeCognitiveMetrics(getInitialEvents());
+        expect(metrics.weeklySessions).toBeGreaterThan(0);
+        expect(metrics.accuracyWeekly).toBeGreaterThanOrEqual(0);
+        expect(metrics.accuracyWeekly).toBeLessThanOrEqual(100);
+        expect(metrics.bestTimeOfDay).toBeDefined();
+        expect(metrics.streakDays).toBeGreaterThan(0);
+      });
+
+      it('flags calm amber alert only on sustained drop over 2+ weeks vs personal baseline', async () => {
+        const { computeCognitiveMetrics } = await import('../src/lib/cognitiveEngine');
+
+        // Create simulated events with a severe drop over 14+ days
+        const oldEvents = Array.from({ length: 10 }).map((_, i) => ({
+          id: `old-${i}`,
+          circleId: 'circle-1',
+          actorId: 'elder-dad',
+          actorRole: 'elder' as const,
+          type: 'cog_event' as const,
+          payload: { correct: true, responseMs: 2500, hintUsed: false },
+          source: 'manual_entry',
+          createdAt: new Date(Date.now() - (20 + i) * 24 * 60 * 60 * 1000).toISOString(),
+        }));
+
+        const droppedEvents = Array.from({ length: 10 }).map((_, i) => ({
+          id: `recent-${i}`,
+          circleId: 'circle-1',
+          actorId: 'elder-dad',
+          actorRole: 'elder' as const,
+          type: 'cog_event' as const,
+          payload: { correct: false, responseMs: 7500, hintUsed: true },
+          source: 'manual_entry',
+          createdAt: new Date(Date.now() - (2 + i) * 24 * 60 * 60 * 1000).toISOString(),
+        }));
+
+        const metrics = computeCognitiveMetrics([...droppedEvents, ...oldEvents]);
+        expect(metrics.sustainedDropDetected).toBe(true);
+        expect(metrics.alertMessage).toContain('doctor');
+      });
+    });
+
+    describe('Prompt 19: Offline-First Resilience', () => {
+      it('generates client UUID for offline event queue idempotency', async () => {
+        const { generateClientUuid } = await import('../src/lib/offlineSync');
+        const uuid1 = generateClientUuid();
+        const uuid2 = generateClientUuid();
+        expect(uuid1).toBeDefined();
+        expect(uuid2).toBeDefined();
+        expect(uuid1).not.toBe(uuid2);
+      });
+    });
+
+    describe('Prompt 20: Hydration and Daily Activity Reminders', () => {
+      it('provides daily hydration target and anchored activity reminders', async () => {
+        const { INITIAL_DAILY_REMINDERS } = await import('../src/data/initialData');
+        expect(INITIAL_DAILY_REMINDERS.length).toBeGreaterThan(0);
+
+        const waterRem = INITIAL_DAILY_REMINDERS.find((r) => r.type === 'hydration');
+        expect(waterRem).toBeDefined();
+        expect(waterRem?.dailyTarget).toBe(6);
+
+        const walkRem = INITIAL_DAILY_REMINDERS.find((r) => r.type === 'walk');
+        expect(walkRem).toBeDefined();
+        expect(walkRem?.timeAnchor).toBe('morning');
+      });
+    });
   });
 });
 

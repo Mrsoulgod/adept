@@ -9,6 +9,7 @@ import { ShieldAlert } from 'lucide-react';
 
 // Elder Views
 import { ElderScreen } from '../elder/ElderScreen';
+import { ElderMindTab } from '../elder/ElderMindTab';
 import { ElderFamilyTab } from '../elder/ElderFamilyTab';
 import { ElderHelpTab } from '../elder/ElderHelpTab';
 
@@ -27,6 +28,7 @@ import { FamilySettingsTab } from '../family/tabs/FamilySettingsTab';
 // Icons
 import {
   Calendar,
+  Brain,
   Users,
   HelpCircle,
   Pill,
@@ -63,7 +65,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
   const [bounceNotice, setBounceNotice] = useState<string | null>(null);
 
   // Tab State per role: each tab is its own distinct route/view, NOT one long scroll!
-  const [elderTab, setElderTab] = useState<'today' | 'family' | 'help'>('today');
+  const [elderTab, setElderTab] = useState<'today' | 'mind' | 'family' | 'help'>('today');
   const [caretakerTab, setCaretakerTab] = useState<'today' | 'meds' | 'log' | 'alerts'>('today');
   const [familyTab, setFamilyTab] = useState<'home' | 'team' | 'tasks' | 'settings'>('home');
 
@@ -91,7 +93,12 @@ export const MobileShell: React.FC<MobileShellProps> = ({
       // 2. If on authorized role's routes, sync tab state
       if (targetRole === role) {
         if (role === 'elder') {
-          if (targetTab === 'today' || targetTab === 'family' || targetTab === 'help') {
+          if (
+            targetTab === 'today' ||
+            targetTab === 'mind' ||
+            targetTab === 'family' ||
+            targetTab === 'help'
+          ) {
             setElderTab(targetTab);
           } else {
             window.location.hash = '#/elder/today';
@@ -134,7 +141,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
     return () => window.removeEventListener('hashchange', enforceRouteGuard);
   }, [role]);
 
-  const switchElderTab = (tab: 'today' | 'family' | 'help') => {
+  const switchElderTab = (tab: 'today' | 'mind' | 'family' | 'help') => {
     setElderTab(tab);
     window.location.hash = `#/elder/${tab}`;
   };
@@ -176,6 +183,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
         {role === 'elder' && (
           <>
             {elderTab === 'today' && <ElderScreen />}
+            {elderTab === 'mind' && <ElderMindTab />}
             {elderTab === 'family' && <ElderFamilyTab />}
             {elderTab === 'help' && <ElderHelpTab />}
           </>
@@ -204,10 +212,11 @@ export const MobileShell: React.FC<MobileShellProps> = ({
 
       {/* Bottom Tab Navigation Bar (Max Touch Target: 56px / h-14) */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-[390px] mx-auto bg-white/95 backdrop-blur-md border-t border-slate-200/90 h-14 z-40 flex items-center justify-around px-2 shadow-lg">
-        {/* Elder Navigation: Today / Family / Help */}
+        {/* Elder Navigation: Today / Mind / Family / Help */}
         {role === 'elder' && (
           <>
             <button
+              id="elder-tab-today"
               onClick={() => switchElderTab('today')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 elderTab === 'today' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
@@ -219,6 +228,19 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </button>
 
             <button
+              id="elder-tab-mind"
+              onClick={() => switchElderTab('mind')}
+              className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
+                elderTab === 'mind' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'
+              }`}
+            >
+              <Brain className="w-5 h-5" />
+              <span className="text-[11px] leading-tight">Mind</span>
+              {elderTab === 'mind' && <div className="w-1.5 h-1.5 rounded-full bg-[#064e3b]" />}
+            </button>
+
+            <button
+              id="elder-tab-family"
               onClick={() => switchElderTab('family')}
               className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
                 elderTab === 'family' ? 'text-[#064e3b] font-black' : 'text-slate-500 font-semibold'

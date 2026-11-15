@@ -3,6 +3,8 @@ import { useAdept } from '../../../context/AdeptContext';
 import { getLockoutStatus, resetLockout, recordFailedAttempt } from '../../../lib/authSecurity';
 import { ElderPairingModal } from '../ElderPairingModal';
 import { MembersScreen } from '../MembersScreen';
+import { MemoryLaneUploadModal } from '../MemoryLaneUploadModal';
+import { ActivityReminderModal } from '../ActivityReminderModal';
 import {
   QrCode,
   LogOut,
@@ -10,6 +12,8 @@ import {
   Users,
   Play,
   Tablet,
+  Camera,
+  Droplets,
 } from 'lucide-react';
 
 export const FamilySettingsTab: React.FC = () => {
@@ -20,6 +24,8 @@ export const FamilySettingsTab: React.FC = () => {
   // Modals / subviews
   const [pairingModalOpen, setPairingModalOpen] = useState(false);
   const [membersScreenOpen, setMembersScreenOpen] = useState(false);
+  const [memoryLaneModalOpen, setMemoryLaneModalOpen] = useState(false);
+  const [activityModalOpen, setActivityModalOpen] = useState(false);
 
   const handleSimulateFailedTry = () => {
     const updated = recordFailedAttempt('caretaker');
@@ -229,6 +235,74 @@ export const FamilySettingsTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Prompt 15: Memory Lane Photo Manager */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center">
+              <Camera className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black text-slate-900">
+                Memory Lane Photos
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                Tag photos & voice notes for {activeElder.name.split(' ')[0]}’s Mind tab
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full">
+            Prompt 15
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Upload cherished family portraits tagged with name, relation, and voice notes. Drives the interactive 3-choice memory recall game.
+        </p>
+
+        <button
+          onClick={() => setMemoryLaneModalOpen(true)}
+          className="w-full h-12 bg-white hover:bg-slate-50 border-2 border-slate-200 text-slate-800 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98 transition-all"
+        >
+          <Camera className="w-4 h-4 text-amber-800" />
+          <span>Manage Memory Lane Photos</span>
+        </button>
+      </div>
+
+      {/* Prompt 20: Hydration & Routine Activity Reminders */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-900 flex items-center justify-center">
+              <Droplets className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black text-slate-900">
+                Hydration & Daily Activities
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                Water goal & scheduled routine walks or calls
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold bg-cyan-100 text-cyan-900 px-2.5 py-0.5 rounded-full">
+            Prompt 20
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Configure daily hydration checkpoints and custom activities (walks, calls) anchored to routine times with 1-tap logging.
+        </p>
+
+        <button
+          onClick={() => setActivityModalOpen(true)}
+          className="w-full h-12 bg-white hover:bg-slate-50 border-2 border-slate-200 text-slate-800 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98 transition-all"
+        >
+          <Droplets className="w-4 h-4 text-cyan-800" />
+          <span>Configure Daily Activities & Water</span>
+        </button>
+      </div>
+
       {/* 4. Prompt 6: Replay Walkthrough Tour Button */}
       <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-xs flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -260,6 +334,8 @@ export const FamilySettingsTab: React.FC = () => {
 
       {/* Modals */}
       {pairingModalOpen && <ElderPairingModal onClose={() => setPairingModalOpen(false)} />}
+      {memoryLaneModalOpen && <MemoryLaneUploadModal isOpen={memoryLaneModalOpen} onClose={() => setMemoryLaneModalOpen(false)} />}
+      {activityModalOpen && <ActivityReminderModal isOpen={activityModalOpen} onClose={() => setActivityModalOpen(false)} />}
     </div>
   );
 };

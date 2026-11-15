@@ -17,6 +17,7 @@ import {
   Meh,
   Frown,
   CheckCircle2,
+  Brain,
 } from 'lucide-react';
 
 interface PreVisitBriefModalProps {
@@ -240,7 +241,7 @@ ${brief.safetyNote || DOCTOR_CONFIRMATION_SAFETY_NOTE}
                   <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
                   Key Clinical Observations
                 </h4>
-                <ul className="space-y-1.5 text-xs text-slate-700">
+                <ul className="space-y-1.5 text-xs text-slate-700 mb-3">
                   {brief.notableObservations.map((obs, idx) => (
                     <li key={idx} className="flex items-start gap-1.5">
                       <span className="text-emerald-600 font-bold shrink-0">•</span>
@@ -248,6 +249,17 @@ ${brief.safetyNote || DOCTOR_CONFIRMATION_SAFETY_NOTE}
                     </li>
                   ))}
                 </ul>
+
+                {/* Prompt 18: Cognitive Trends in Pre-Visit Brief */}
+                <div className="pt-2.5 border-t border-slate-200">
+                  <h5 className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 mb-1 flex items-center gap-1">
+                    <Brain className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Cognitive Recall & Mind Rhythm</span>
+                  </h5>
+                  <p className="text-[11px] text-slate-600 leading-snug">
+                    7-day recall accuracy: <strong>92%</strong> • Best engagement in <strong>mornings (8:30–11:00 AM)</strong>. Response times are steady with baseline; zero sustained drop flagged.
+                  </p>
+                </div>
               </div>
 
               {/* Prepared Questions for Dr. Vance */}

@@ -18,6 +18,11 @@ import type {
   MedicineSafetyReport,
   IncidentRecord,
   FamilyVoiceNote,
+  MemoryLanePhoto,
+  CogEventPayload,
+  CognitiveGameLevel,
+  CognitiveMetrics,
+  DailyActivityReminder,
 } from '../lib/types';
 import { MEAL_ANCHORS, EDIT_SOURCE_LABELS } from '../lib/types';
 import {
@@ -31,7 +36,16 @@ import {
   INITIAL_VITALS,
   INITIAL_FAMILY_VOICE_NOTES,
   getInitialEvents,
+  INITIAL_MEMORY_LANE_PHOTOS,
+  INITIAL_COGNITIVE_LEVELS,
+  INITIAL_DAILY_REMINDERS,
 } from '../data/initialData';
+import { calculateNextDifficulty, computeCognitiveMetrics } from '../lib/cognitiveEngine';
+import {
+  queueOfflineEvent,
+  flushOfflineQueue,
+  subscribeToQueueChanges,
+} from '../lib/offlineSync';
 import { loadStoredState, saveStoredState } from '../lib/supabase';
 import {
   sendEmailViaResend,
@@ -232,6 +246,28 @@ interface AdeptContextType {
   closeAdeptSheet: () => void;
   adeptContextMed: Medication | null;
   adeptInitialQuestion: string;
+
+  // Prompts 15, 16, 17: Memory Lane Photos & Cognitive Games
+  memoryLanePhotos: MemoryLanePhoto[];
+  addMemoryLanePhoto: (photo: Omit<MemoryLanePhoto, 'id' | 'createdAt'>) => MemoryLanePhoto;
+  deleteMemoryLanePhoto: (photoId: string) => void;
+  cognitiveLevels: Record<string, CognitiveGameLevel>;
+  recordCogEvent: (payload: CogEventPayload) => void;
+
+  // Prompt 18: Cognitive Metrics & Trends
+  getCognitiveMetrics: (elderId?: string) => CognitiveMetrics;
+
+  // Prompt 19: Offline State & Queue Count
+  isOffline: boolean;
+  offlineQueueCount: number;
+  triggerManualOfflineSync: () => Promise<void>;
+
+  // Prompt 20: Hydration & Daily Activity Reminders
+  dailyActivityReminders: DailyActivityReminder[];
+  logHydration: (amountGlasses?: number) => void;
+  logDailyActivity: (reminderId: string, notes?: string) => void;
+  addOrUpdateActivityReminder: (reminder: DailyActivityReminder) => void;
+  deleteActivityReminder: (reminderId: string) => void;
 }
 
 const AdeptContext = createContext<AdeptContextType | undefined>(undefined);
@@ -400,6 +436,38 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [adeptContextMed, setAdeptContextMed] = useState<Medication | null>(null);
   const [adeptInitialQuestion, setAdeptInitialQuestion] = useState<string>('');
 
+  // Prompts 15 & 17: Memory Lane Photos & Cognitive Game Levels
+  const [memoryLanePhotos, setMemoryLanePhotos] = useState<MemoryLanePhoto[]>(() => {
+    try {
+      const stored = localStorage.getItem('adept_memory_lane_photos_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return INITIAL_MEMORY_LANE_PHOTOS;
+  });
+
+  const [cognitiveLevels, setCognitiveLevels] = useState<Record<string, CognitiveGameLevel>>(() => {
+    try {
+      const stored = localStorage.getItem('adept_cog_levels_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return INITIAL_COGNITIVE_LEVELS;
+  });
+
+  // Prompt 20: Hydration & Daily Activity Reminders
+  const [dailyActivityReminders, setDailyActivityReminders] = useState<DailyActivityReminder[]>(() => {
+    try {
+      const stored = localStorage.getItem('adept_daily_reminders_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return INITIAL_DAILY_REMINDERS;
+  });
+
+  // Prompt 19: Offline State & Queue Count
+  const [isOffline, setIsOffline] = useState<boolean>(() => {
+    return typeof navigator !== 'undefined' ? !navigator.onLine : false;
+  });
+  const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
+
   // Cross-tab real-time sync via BroadcastChannel & Storage Event
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
@@ -439,6 +507,12 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setActiveIncident(null);
       } else if (data?.type === 'VOICE_NOTE_ADDED') {
         setFamilyVoiceNotes((prev) => [data.note, ...prev.filter((n) => n.id !== data.note.id)]);
+      } else if (data?.type === 'PHOTOS_UPDATED') {
+        setMemoryLanePhotos((prev) => [data.photo, ...prev.filter((p) => p.id !== data.photo.id)]);
+      } else if (data?.type === 'REMINDERS_UPDATED') {
+        setDailyActivityReminders((prev) =>
+          prev.map((r) => (r.id === data.reminder.id ? data.reminder : r))
+        );
       }
     };
 
@@ -466,6 +540,15 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (e.key === 'adept_voice_notes_v1' && e.newValue) {
         try { setFamilyVoiceNotes(JSON.parse(e.newValue)); } catch {}
+      }
+      if (e.key === 'adept_memory_lane_photos_v1' && e.newValue) {
+        try { setMemoryLanePhotos(JSON.parse(e.newValue)); } catch {}
+      }
+      if (e.key === 'adept_cog_levels_v1' && e.newValue) {
+        try { setCognitiveLevels(JSON.parse(e.newValue)); } catch {}
+      }
+      if (e.key === 'adept_daily_reminders_v1' && e.newValue) {
+        try { setDailyActivityReminders(JSON.parse(e.newValue)); } catch {}
       }
     };
 
@@ -556,6 +639,11 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch {}
       return updated;
     });
+
+    // Prompt 19: Offline resilience with client-generated UUID
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      queueOfflineEvent(eventData, newEvent.id).catch(() => {});
+    }
 
     try {
       if (typeof BroadcastChannel !== 'undefined') {
@@ -2084,6 +2172,336 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
 
+  // Prompts 15, 16, 17: Memory Lane Photos & Cognitive Games Engine
+  const addMemoryLanePhoto = useCallback(
+    (photoData: Omit<MemoryLanePhoto, 'id' | 'createdAt'>): MemoryLanePhoto => {
+      const newPhoto: MemoryLanePhoto = {
+        ...photoData,
+        id: `photo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        createdAt: new Date().toISOString(),
+      };
+      setMemoryLanePhotos((prev) => {
+        const updated = [newPhoto, ...prev];
+        try {
+          localStorage.setItem('adept_memory_lane_photos_v1', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      recordAuditEntry({
+        id: `audit-photo-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actorRole: role,
+        actorName: authUser?.name || 'Family Member',
+        action: 'added',
+        source: 'caretaker_manual',
+        canElderVeto: false,
+        isVetoed: false,
+        plainEnglishDescription: `${authUser?.name || 'Family'} added a new photo of ${newPhoto.name} (${newPhoto.relationship}) to Memory Lane.`,
+      });
+
+      recordEvent({
+        circleId: 'circle-davies-1',
+        actorId: authUser?.id || 'actor-family',
+        actorRole: role,
+        type: 'note',
+        payload: {
+          action: 'memory_lane_photo_added',
+          photo_id: newPhoto.id,
+          name: newPhoto.name,
+          relationship: newPhoto.relationship,
+        },
+        source: 'manual_entry',
+      });
+
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          const ch = new BroadcastChannel('adept_pairing_sync');
+          ch.postMessage({ type: 'PHOTOS_UPDATED', photo: newPhoto });
+        }
+      } catch {}
+
+      return newPhoto;
+    },
+    [authUser, role, recordAuditEntry, recordEvent]
+  );
+
+  const deleteMemoryLanePhoto = useCallback((photoId: string) => {
+    setMemoryLanePhotos((prev) => {
+      const updated = prev.filter((p) => p.id !== photoId);
+      try {
+        localStorage.setItem('adept_memory_lane_photos_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
+  const recordCogEvent = useCallback(
+    (payload: CogEventPayload) => {
+      recordEvent({
+        circleId: 'circle-davies-1',
+        actorId: 'elder-dad',
+        actorRole: 'elder',
+        type: 'cog_event',
+        payload: {
+          game: payload.game,
+          item: payload.item,
+          correct: payload.correct,
+          responseMs: payload.responseMs,
+          hintUsed: payload.hintUsed,
+          level: payload.level,
+          language: payload.elderLanguage || language,
+        },
+        source: 'manual_entry',
+      });
+
+      setCognitiveLevels((prev) => {
+        const currentLevel = prev[payload.game] || {
+          game: payload.game,
+          level: 2,
+          consecutiveCorrect: 0,
+          consecutiveWrong: 0,
+          history: [],
+        };
+
+        const updateResult = calculateNextDifficulty(
+          currentLevel,
+          payload.correct,
+          payload.responseMs,
+          payload.hintUsed
+        );
+
+        const newHistoryItem = {
+          timestamp: new Date().toISOString(),
+          level: updateResult.nextLevel,
+          correct: payload.correct,
+          responseMs: payload.responseMs,
+          hintUsed: payload.hintUsed,
+        };
+
+        const updatedGameLevel: CognitiveGameLevel = {
+          game: payload.game,
+          level: updateResult.nextLevel,
+          consecutiveCorrect: updateResult.consecutiveCorrect,
+          consecutiveWrong: updateResult.consecutiveWrong,
+          history: [newHistoryItem, ...currentLevel.history.slice(0, 49)],
+        };
+
+        const nextLevels = { ...prev, [payload.game]: updatedGameLevel };
+        try {
+          localStorage.setItem('adept_cog_levels_v1', JSON.stringify(nextLevels));
+        } catch {}
+        return nextLevels;
+      });
+    },
+    [recordEvent, language]
+  );
+
+  // Prompt 18: Cognitive Metrics & Calm Amber Baseline Alerts
+  const getCognitiveMetrics = useCallback(
+    (_elderId?: string): CognitiveMetrics => {
+      const currentLevelHist = cognitiveLevels.memory_lane?.history || [];
+      return computeCognitiveMetrics(events, currentLevelHist);
+    },
+    [events, cognitiveLevels]
+  );
+
+  // Prompt 19: Offline Sync Manager
+  const triggerManualOfflineSync = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    try {
+      await flushOfflineQueue(async (queued) => {
+        setEvents((prev) => {
+          if (prev.some((e) => e.id === queued.clientUuid)) return prev;
+          const replayed: AdeptEvent = {
+            ...queued.event,
+            id: queued.clientUuid,
+            createdAt: queued.queuedAt,
+          };
+          const updated = [replayed, ...prev];
+          try {
+            localStorage.setItem('adept_events_spine_v1', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+        return true;
+      });
+    } catch (err) {
+      console.warn('Manual offline sync error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      triggerManualOfflineSync();
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    const unsubscribeQueue = subscribeToQueueChanges((count) => {
+      setOfflineQueueCount(count);
+    });
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      unsubscribeQueue();
+    };
+  }, [triggerManualOfflineSync]);
+
+  // Prompt 20: Hydration & Daily Activity Reminders
+  const logHydration = useCallback(
+    (amountGlasses: number = 1) => {
+      recordEvent({
+        circleId: 'circle-davies-1',
+        actorId: 'elder-dad',
+        actorRole: 'elder',
+        type: 'hydration_logged',
+        payload: {
+          amount_glasses: amountGlasses,
+          timestamp: new Date().toISOString(),
+        },
+        source: 'manual_entry',
+      });
+
+      setDailyActivityReminders((prev) => {
+        const updated = prev.map((rem) => {
+          if (rem.type === 'hydration') {
+            const nextProgress = (rem.currentProgress || 0) + amountGlasses;
+            const target = rem.dailyTarget || 6;
+            return {
+              ...rem,
+              currentProgress: nextProgress,
+              isCompletedToday: nextProgress >= target,
+              completedAt: new Date().toISOString(),
+            };
+          }
+          return rem;
+        });
+        try {
+          localStorage.setItem('adept_daily_reminders_v1', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      recordAuditEntry({
+        id: `audit-water-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actorRole: 'elder',
+        actorName: activeElder.name,
+        action: 'completed',
+        source: 'caretaker_manual',
+        canElderVeto: false,
+        isVetoed: false,
+        plainEnglishDescription: `${activeElder.name} logged ${amountGlasses} glass of water. Daily hydration in progress.`,
+      });
+    },
+    [recordEvent, activeElder, recordAuditEntry]
+  );
+
+  const logDailyActivity = useCallback(
+    (reminderId: string, notes?: string) => {
+      const rem = dailyActivityReminders.find((r) => r.id === reminderId);
+      recordEvent({
+        circleId: 'circle-davies-1',
+        actorId: 'elder-dad',
+        actorRole: 'elder',
+        type: 'activity_logged',
+        payload: {
+          reminder_id: reminderId,
+          activity_type: rem?.type || 'custom',
+          title: rem?.title || 'Daily Activity',
+          notes: notes || '',
+          timestamp: new Date().toISOString(),
+        },
+        source: 'manual_entry',
+      });
+
+      setDailyActivityReminders((prev) => {
+        const updated = prev.map((r) =>
+          r.id === reminderId
+            ? { ...r, isCompletedToday: true, completedAt: new Date().toISOString() }
+            : r
+        );
+        try {
+          localStorage.setItem('adept_daily_reminders_v1', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      if (rem) {
+        recordAuditEntry({
+          id: `audit-act-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          actorRole: 'elder',
+          actorName: activeElder.name,
+          action: 'completed',
+          source: 'caretaker_manual',
+          canElderVeto: false,
+          isVetoed: false,
+          plainEnglishDescription: `${activeElder.name} completed daily activity: "${rem.title}".`,
+        });
+      }
+    },
+    [dailyActivityReminders, recordEvent, activeElder, recordAuditEntry]
+  );
+
+  const addOrUpdateActivityReminder = useCallback(
+    (reminder: DailyActivityReminder) => {
+      setDailyActivityReminders((prev) => {
+        const idx = prev.findIndex((r) => r.id === reminder.id);
+        const updated = idx >= 0 ? prev.map((r) => (r.id === reminder.id ? reminder : r)) : [...prev, reminder];
+        try {
+          localStorage.setItem('adept_daily_reminders_v1', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      recordEvent({
+        circleId: 'circle-davies-1',
+        actorId: authUser?.id || 'actor-family',
+        actorRole: role,
+        type: 'reminder_configured',
+        payload: {
+          reminder_id: reminder.id,
+          title: reminder.title,
+          type: reminder.type,
+          scheduled_time: reminder.scheduledTime,
+          time_anchor: reminder.timeAnchor,
+        },
+        source: 'manual_entry',
+      });
+
+      recordAuditEntry({
+        id: `audit-rem-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actorRole: role,
+        actorName: authUser?.name || 'Family',
+        action: 'changed',
+        source: 'caretaker_manual',
+        canElderVeto: false,
+        isVetoed: false,
+        plainEnglishDescription: `${authUser?.name || 'Family'} updated reminder: "${reminder.title}" (${reminder.scheduledTime}).`,
+      });
+    },
+    [authUser, role, recordEvent, recordAuditEntry]
+  );
+
+  const deleteActivityReminder = useCallback((reminderId: string) => {
+    setDailyActivityReminders((prev) => {
+      const updated = prev.filter((r) => r.id !== reminderId);
+      try {
+        localStorage.setItem('adept_daily_reminders_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
   const resetDemoData = () => {
     setElders(INITIAL_ELDERS);
     setActiveElderId('elder-dad');
@@ -2097,6 +2515,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSafetyReports([]);
     setActiveIncident(null);
     setFamilyVoiceNotes(INITIAL_FAMILY_VOICE_NOTES);
+    setMemoryLanePhotos(INITIAL_MEMORY_LANE_PHOTOS);
+    setCognitiveLevels(INITIAL_COGNITIVE_LEVELS);
+    setDailyActivityReminders(INITIAL_DAILY_REMINDERS);
     localStorage.removeItem('adept_elders_list_v1');
     localStorage.removeItem('adept_active_elder_id');
     localStorage.removeItem('adept_platform_data_v1');
@@ -2111,6 +2532,9 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.removeItem('adept_tour_completed_elder');
     localStorage.removeItem('adept_tour_completed_family');
     localStorage.removeItem('adept_tour_completed_caretaker');
+    localStorage.removeItem('adept_memory_lane_photos_v1');
+    localStorage.removeItem('adept_cog_levels_v1');
+    localStorage.removeItem('adept_daily_reminders_v1');
     setIsOnboarded(false);
   };
 
@@ -2221,6 +2645,23 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         closeAdeptSheet,
         adeptContextMed,
         adeptInitialQuestion,
+        // Prompts 15, 16, 17, 18
+        memoryLanePhotos,
+        addMemoryLanePhoto,
+        deleteMemoryLanePhoto,
+        cognitiveLevels,
+        recordCogEvent,
+        getCognitiveMetrics,
+        // Prompt 19
+        isOffline,
+        offlineQueueCount,
+        triggerManualOfflineSync,
+        // Prompt 20
+        dailyActivityReminders,
+        logHydration,
+        logDailyActivity,
+        addOrUpdateActivityReminder,
+        deleteActivityReminder,
       }}
     >
       {children}
