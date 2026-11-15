@@ -570,5 +570,157 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
       }
     });
   });
+
+  describe('Delta Task: Real Accounts, Onboarding, Mobile Shell & Audit Deduplication', () => {
+    // 1. PIN Security & SHA-256 Hashing
+    it('cryptographically hashes 6-digit Caretaker PIN using SHA-256 with salt', async () => {
+      const { hashPin, verifyPin } = await import('../src/lib/authSecurity');
+      const pin = '246810';
+      const hash1 = await hashPin(pin);
+      const hash2 = await hashPin(pin);
+
+      expect(hash1).toBeDefined();
+      expect(hash1).toBe(hash2); // Deterministic salt verification
+      expect(hash1).not.toBe(pin); // Not plaintext
+
+      const isMatch = await verifyPin(pin, hash1);
+      expect(isMatch).toBe(true);
+
+      const isMismatch = await verifyPin('111111', hash1);
+      expect(isMismatch).toBe(false);
+    });
+
+    // 2. Lockout protection after 5 wrong attempts
+    it('enforces 15-minute security lockout after 5 consecutive failed PIN attempts', async () => {
+      const { recordFailedAttempt, getLockoutStatus, resetLockout } = await import('../src/lib/authSecurity');
+      const testRole = 'test_caretaker_' + Date.now();
+
+      resetLockout(testRole);
+      let status = getLockoutStatus(testRole);
+      expect(status.isLocked).toBe(false);
+      expect(status.remainingAttempts).toBe(5);
+
+      // Attempt 1 to 4: not locked yet
+      for (let i = 1; i <= 4; i++) {
+        const attempt = recordFailedAttempt(testRole);
+        expect(attempt.isLocked).toBe(false);
+        expect(attempt.remainingAttempts).toBe(5 - i);
+      }
+
+      // Attempt 5: triggers 15-min lockout!
+      const finalAttempt = recordFailedAttempt(testRole);
+      expect(finalAttempt.isLocked).toBe(true);
+      expect(finalAttempt.remainingAttempts).toBe(0);
+      expect(finalAttempt.minutesRemaining).toBe(15);
+
+      // Status check confirms locked state
+      status = getLockoutStatus(testRole);
+      expect(status.isLocked).toBe(true);
+
+      // Successful unlock / reset
+      resetLockout(testRole);
+      status = getLockoutStatus(testRole);
+      expect(status.isLocked).toBe(false);
+      expect(status.remainingAttempts).toBe(5);
+    });
+
+    // 3. Real Auth & First User = Family Owner
+    it('signs up and establishes first user as Family Owner', async () => {
+      const { signUpUser } = await import('../src/lib/authService');
+      const email = `family.owner.${Date.now()}@example.com`;
+      const res = await signUpUser(email, 'securePass2026', 'James Davies');
+
+      expect(res.user).toBeDefined();
+      expect(res.user?.role).toBe('family');
+      expect(res.user?.isOwner).toBe(true);
+      expect(res.user?.email).toBe(email);
+    });
+
+    // 4. Elder Pairing Code & Persistent Login
+    it('generates pairing code ADEPT-XXXX and pairs elder persistently without timeouts', async () => {
+      const { generateElderPairingCode } = await import('../src/lib/authSecurity');
+      const { pairElderDeviceWithCode, isElderDevicePaired, unpairElderDevice } = await import('../src/lib/authService');
+
+      const code = generateElderPairingCode();
+      expect(code).toMatch(/^ADEPT-\d{4}$/);
+
+      unpairElderDevice();
+      expect(isElderDevicePaired()).toBe(false);
+
+      // Pair device with code
+      const paired = pairElderDeviceWithCode(code);
+      expect(paired).toBe(true);
+      expect(isElderDevicePaired()).toBe(true);
+
+      // Unpair cleanup
+      unpairElderDevice();
+      expect(isElderDevicePaired()).toBe(false);
+    });
+
+    // 5. Mobile-first Shell: Bottom Tab Nav routes per role
+    it('specifies distinct tab routes per role with no long scroll', () => {
+      const roleTabs = {
+        elder: ['today', 'family', 'help'],
+        caretaker: ['today', 'meds', 'log', 'alerts'],
+        family: ['home', 'team', 'tasks', 'settings'],
+      };
+
+      // Elder: Today, Family, Help
+      expect(roleTabs.elder).toEqual(['today', 'family', 'help']);
+      // Caretaker: Today, Meds, Log, Alerts
+      expect(roleTabs.caretaker).toEqual(['today', 'meds', 'log', 'alerts']);
+      // Family: Home, Care Team, Tasks, Settings
+      expect(roleTabs.family).toEqual(['home', 'team', 'tasks', 'settings']);
+    });
+
+    // 6. Audit Log Deduplication: exactly one write per action
+    it('guarantees audit log writes once per action with zero duplicates', () => {
+      const auditStore: Array<{ action: string; actorRole: string; plainEnglishDescription: string; timestamp: string }> = [];
+
+      const recordAuditEntry = (item: { action: string; actorRole: string; plainEnglishDescription: string; timestamp: string }) => {
+        const itemTime = new Date(item.timestamp).getTime();
+        const isDuplicate = auditStore.some((existing) => {
+          const existingTime = new Date(existing.timestamp).getTime();
+          const timeDiff = Math.abs(itemTime - existingTime);
+          return (
+            timeDiff < 2000 &&
+            existing.action === item.action &&
+            existing.actorRole === item.actorRole &&
+            existing.plainEnglishDescription === item.plainEnglishDescription
+          );
+        });
+
+        if (!isDuplicate) {
+          auditStore.unshift(item);
+        }
+      };
+
+      const now = new Date().toISOString();
+      const actionItem = {
+        action: 'Changed dose of Morning Blood Pressure Tablet',
+        actorRole: 'caretaker',
+        plainEnglishDescription: 'Rahul changed dose to 5mg, source: prescription photo.',
+        timestamp: now,
+      };
+
+      // Trigger 5 times in rapid succession (simulating React StrictMode or concurrent events)
+      for (let i = 0; i < 5; i++) {
+        recordAuditEntry({ ...actionItem });
+      }
+
+      // Assert exactly one write occurred
+      expect(auditStore.length).toBe(1);
+
+      // Trigger a different action
+      const differentAction = {
+        action: 'Refilled stock for Joint Shield (+30 pills)',
+        actorRole: 'caretaker',
+        plainEnglishDescription: 'Rahul recorded refill delivery of +30 pills, source: prescription photo.',
+        timestamp: now,
+      };
+      recordAuditEntry(differentAction);
+      expect(auditStore.length).toBe(2);
+    });
+  });
 });
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type {
   Role,
   Profile,
@@ -24,6 +24,36 @@ import {
   buildDeviationAlertHtml,
 } from '../lib/resend';
 import type { EmailDispatchResult } from '../lib/resend';
+import {
+  getCurrentAuthUser,
+  isElderDevicePaired,
+  isOnboardingCompleted,
+  getElderPairingCode,
+  pairElderDeviceWithCode,
+  unpairElderDevice as unpairElderDeviceStorage,
+  setOnboardingCompleted,
+  signUpUser,
+  signInUser,
+  signOutUser,
+  setCaretakerHashedPin,
+  authenticateCaretakerPin,
+} from '../lib/authService';
+import type { AuthUser } from '../lib/authService';
+
+export interface FamilyTask {
+  id: string;
+  title: string;
+  completed: boolean;
+  assignedTo: string;
+  dueText: string;
+}
+
+export interface FamilyCheerMessage {
+  id: string;
+  sender: string;
+  text: string;
+  date: string;
+}
 
 interface AdeptContextType {
   role: Role;
@@ -43,9 +73,41 @@ interface AdeptContextType {
     supabaseKey?: string;
   };
   lastEmailDispatch: EmailDispatchResult | null;
+
+  // Real Auth & Device Pairing State
+  authUser: AuthUser | null;
+  isElderPaired: boolean;
+  isOnboarded: boolean;
+  elderPairingCode: string;
+  pairElderDevice: (code: string) => boolean;
+  unpairElderDevice: () => void;
+  loginUser: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  registerUser: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
+  logoutUser: () => Promise<void>;
+  completeOnboarding: (data: {
+    elderName: string;
+    elderAge: number;
+    doctorName: string;
+    doctorPhone: string;
+    conditions: string[];
+    caretakerName: string;
+    caretakerEmail: string;
+    caretakerPin: string;
+    familyEmail: string;
+  }) => Promise<void>;
+  verifyCaretakerSecurityPin: (pin: string) => Promise<{ success: boolean; error?: string; remainingAttempts?: number }>;
+
+  // Family Tasks & Cheer
+  familyTasks: FamilyTask[];
+  toggleFamilyTask: (id: string) => void;
+  addFamilyTask: (title: string, assignedTo: string, dueText: string) => void;
+  familyCheerMessages: FamilyCheerMessage[];
+  sendFamilyCheerMessage: (sender: string, text: string) => void;
+
   // Role switcher & Auth
   switchRoleWithPin: (targetRole: Role, pin: string) => boolean;
   setDirectRole: (role: Role) => void;
+
   // Elder Actions (Centre of decisions)
   confirmDose: (medicationId: string, notes?: string) => void;
   deferDoseComfortably: (medicationId: string, note?: string) => void;
@@ -54,12 +116,17 @@ interface AdeptContextType {
   elderResolveProposal: (proposalId: string, accept: boolean) => void;
   elderVetoAction: (auditLogId: string) => void;
   elderApproveAuditAction: (auditLogId: string) => void;
+
   // Caretaker Actions
   createProposalFromAI: (proposal: Omit<AIProposal, 'id' | 'createdAt' | 'status'>) => void;
   addOrUpdateMedication: (medication: Medication, source?: EditSource, actorName?: string) => void;
   refillMedication: (medicationId: string, amount?: number, actorName?: string) => void;
   triggerCaregiverDigest: (targetEmail?: string) => Promise<EmailDispatchResult>;
   triggerDeviationAlert: (mealAnchor: MealAnchor) => Promise<EmailDispatchResult>;
+
+  // Audit deduplication utility
+  recordAuditEntry: (item: AuditLogItem) => void;
+
   // Settings & Utilities
   updateSettings: (newSettings: Partial<AdeptContextType['settings']>) => void;
   resetDemoData: () => void;
@@ -75,7 +142,20 @@ export const ROLE_PASSCODES: Record<Role, string> = {
 };
 
 export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [role, setRole] = useState<Role>('elder');
+  // Auth & Pairing State
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => getCurrentAuthUser());
+  const [isElderPaired, setIsElderPaired] = useState<boolean>(() => isElderDevicePaired());
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(() => isOnboardingCompleted());
+  const [elderPairingCode, setElderPairingCode] = useState<string>(() => getElderPairingCode());
+
+  // Active Role determination
+  const [role, setRole] = useState<Role>(() => {
+    if (isElderDevicePaired()) return 'elder';
+    const existingUser = getCurrentAuthUser();
+    if (existingUser) return existingUser.role;
+    return 'family';
+  });
+
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
 
   // Load from local storage or defaults
@@ -97,6 +177,70 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [settings, setSettings] = useState(initialData.settings || {});
   const [lastEmailDispatch, setLastEmailDispatch] = useState<EmailDispatchResult | null>(null);
 
+  // Family Tasks Coordination State
+  const [familyTasks, setFamilyTasks] = useState<FamilyTask[]>([
+    {
+      id: 'task-1',
+      title: 'Sunday family roast dinner with Dad',
+      completed: true,
+      assignedTo: 'Sarah Davies',
+      dueText: 'Sunday, 1:00 PM',
+    },
+    {
+      id: 'task-2',
+      title: 'Pick up Lisinopril refill at CVS pharmacy before weekend',
+      completed: false,
+      assignedTo: 'James Davies',
+      dueText: 'Friday before 5:00 PM',
+    },
+    {
+      id: 'task-3',
+      title: 'Dr. Evelyn Vance check-up ride & pre-visit brief review',
+      completed: false,
+      assignedTo: 'Sarah Davies',
+      dueText: 'Tuesday, 10:00 AM',
+    },
+  ]);
+
+  // Family Cheer Messages Feed (Visible in Arthur's Elder Family tab)
+  const [familyCheerMessages, setFamilyCheerMessages] = useState<FamilyCheerMessage[]>([
+    {
+      id: 'cheer-1',
+      sender: 'Sarah & the grandchildren',
+      text: 'Thinking of you today, Dad! Excited to bring your favorite blueberry crumble on Sunday.',
+      date: 'Today, 9:15 AM',
+    },
+    {
+      id: 'cheer-2',
+      sender: 'James (Chicago)',
+      text: 'Good morning Dad! Sent some pictures from our morning walk by the lake. Hope you have a restful day.',
+      date: 'Yesterday, 4:30 PM',
+    },
+  ]);
+
+  // Strict Audit Log Deduplication Engine
+  // GUARANTEE: Exactly one write per action. Rejects duplicate submissions within a 2000ms window.
+  const recordAuditEntry = useCallback((item: AuditLogItem) => {
+    setAuditLogs((prev) => {
+      const itemTime = new Date(item.timestamp).getTime();
+      const isDuplicate = prev.some((existing) => {
+        const existingTime = new Date(existing.timestamp).getTime();
+        const timeDiff = Math.abs(itemTime - existingTime);
+        return (
+          timeDiff < 2000 &&
+          existing.action === item.action &&
+          existing.actorRole === item.actorRole &&
+          existing.plainEnglishDescription === item.plainEnglishDescription
+        );
+      });
+
+      if (isDuplicate) {
+        return prev;
+      }
+      return [item, ...prev];
+    });
+  }, []);
+
   // Sync state changes to storage
   useEffect(() => {
     saveStoredState({
@@ -116,6 +260,144 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const pendingProposalsCount = aiProposals.filter(
     (p) => p.status === 'pending_elder_confirmation'
   ).length;
+
+  // Real Auth Actions
+  const loginUser = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const res = await signInUser(email, password);
+    if (res.user) {
+      setAuthUser(res.user);
+      setRole(res.user.role);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Invalid credentials' };
+  };
+
+  const registerUser = async (
+    email: string,
+    password: string,
+    name: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const res = await signUpUser(email, password, name);
+    if (res.user) {
+      setAuthUser(res.user);
+      setRole('family');
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to register' };
+  };
+
+  const logoutUser = async (): Promise<void> => {
+    await signOutUser();
+    setAuthUser(null);
+    unpairElderDeviceStorage();
+    setIsElderPaired(false);
+    setRole('family');
+  };
+
+  const pairElderDevice = (code: string): boolean => {
+    const paired = pairElderDeviceWithCode(code);
+    if (paired) {
+      setIsElderPaired(true);
+      setRole('elder');
+      return true;
+    }
+    return false;
+  };
+
+  const unpairElderDevice = (): void => {
+    unpairElderDeviceStorage();
+    setIsElderPaired(false);
+    setRole(authUser?.role || 'family');
+  };
+
+  const completeOnboarding = async (data: {
+    elderName: string;
+    elderAge: number;
+    doctorName: string;
+    doctorPhone: string;
+    conditions: string[];
+    caretakerName: string;
+    caretakerEmail: string;
+    caretakerPin: string;
+    familyEmail: string;
+  }) => {
+    // Hash caretaker PIN cryptographically with SHA-256 and salt
+    await setCaretakerHashedPin(data.caretakerPin);
+
+    // Update profile
+    const updatedProfile: Profile = {
+      ...profile,
+      name: data.elderName,
+      age: data.elderAge,
+      doctorName: data.doctorName,
+      doctorPhone: data.doctorPhone,
+      conditions: data.conditions,
+      caretakerName: data.caretakerName,
+      caretakerEmail: data.caretakerEmail,
+      familyEmail: data.familyEmail,
+    };
+    setProfile(updatedProfile);
+
+    // Save pairing code and mark onboarding complete
+    const code = getElderPairingCode();
+    setElderPairingCode(code);
+    setOnboardingCompleted(true);
+    setIsOnboarded(true);
+
+    // Record audit entry
+    recordAuditEntry({
+      id: `audit-${Date.now()}`,
+      actorRole: 'family',
+      actorName: authUser?.name || 'Family Coordinator',
+      action: 'Household Onboarding Completed',
+      plainEnglishDescription: `Family owner set up care profile for ${data.elderName} (${data.elderAge}), assigned Caretaker ${data.caretakerName}, and generated pairing code ${code}.`,
+      timestamp: new Date().toISOString(),
+      canElderVeto: false,
+      isVetoed: false,
+    });
+  };
+
+  const verifyCaretakerSecurityPin = async (
+    pin: string
+  ): Promise<{ success: boolean; error?: string; remainingAttempts?: number }> => {
+    const res = await authenticateCaretakerPin(pin);
+    if (res.success) {
+      return { success: true };
+    }
+    return {
+      success: false,
+      error: res.error,
+      remainingAttempts: res.remainingAttempts,
+    };
+  };
+
+  // Family Tasks Coordination Methods
+  const toggleFamilyTask = (id: string) => {
+    setFamilyTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+    );
+  };
+
+  const addFamilyTask = (title: string, assignedTo: string, dueText: string) => {
+    const newTask: FamilyTask = {
+      id: `task-${Date.now()}`,
+      title,
+      completed: false,
+      assignedTo: assignedTo || 'Family Member',
+      dueText: dueText || 'Upcoming',
+    };
+    setFamilyTasks((prev) => [newTask, ...prev]);
+  };
+
+  const sendFamilyCheerMessage = (sender: string, text: string) => {
+    const newMsg: FamilyCheerMessage = {
+      id: `cheer-${Date.now()}`,
+      sender: sender || authUser?.name || 'Family',
+      text,
+      date: 'Just now',
+    };
+    setFamilyCheerMessages((prev) => [newMsg, ...prev]);
+  };
 
   // Passcode-based role switching
   const switchRoleWithPin = (targetRole: Role, pin: string): boolean => {
@@ -150,8 +432,8 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setDoseLogs((prev) => [newLog, ...prev]);
 
-    // Record audit log
-    const auditItem: AuditLogItem = {
+    // Record deduplicated audit log
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
       actorName: `${profile.name} (Elder)`,
@@ -160,8 +442,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [auditItem, ...prev]);
+    });
   };
 
   // 2. ELDER ACTION: Calmly Defer or Rest (No Shame, Warm Amber)
@@ -185,7 +466,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setDoseLogs((prev) => [newLog, ...prev]);
 
-    const auditItem: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
       actorName: `${profile.name} (Elder)`,
@@ -194,8 +475,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [auditItem, ...prev]);
+    });
   };
 
   // 2b. ELDER ACTION: Skip Dose Comfortably (Warm Amber, Never Shame)
@@ -219,7 +499,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setDoseLogs((prev) => [newLog, ...prev]);
 
-    const auditItem: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
       actorName: `${profile.name} (Elder)`,
@@ -228,8 +508,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [auditItem, ...prev]);
+    });
   };
 
   // 2c. ELDER ACTION: Daily "How do you feel?" Check-in
@@ -237,7 +516,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     wellnessScore: 'great' | 'steady' | 'tired' | 'discomfort',
     notes?: string
   ) => {
-    const auditItem: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
       actorName: `${profile.name} (Elder Check-in)`,
@@ -246,8 +525,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [auditItem, ...prev]);
+    });
   };
 
   // 3. ELDER ACTION: Confirm or Decline AI Proposal (DESIGN LAW: Elder Decides)
@@ -260,61 +538,62 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return {
           ...p,
           status: (accept ? 'confirmed' : 'rejected') as any,
-          elderResponse: (accept ? 'accepted' : 'declined') as any,
           resolvedAt: new Date().toISOString(),
+          elderResponse: (accept ? 'accepted' : 'declined') as any,
         };
       }
       return p;
     });
+
     setAiProposals(updatedProposals);
 
     if (accept) {
       if (proposal.proposedScheduleChanges && proposal.proposedScheduleChanges.length > 0) {
-        // Multi-change schedule proposal from post-visit voice note
         setMedications((prev) => {
           let updated = [...prev];
-          for (const change of proposal.proposedScheduleChanges!) {
-            if (change.action === 'discontinue') {
-              updated = updated.map((m) =>
+          proposal.proposedScheduleChanges?.forEach((change) => {
+            if (change.action === 'modify' || change.action === 'add') {
+              const existingIdx = updated.findIndex((m) =>
                 m.name.toLowerCase().includes(change.medicationName.toLowerCase()) ||
-                m.friendlyName.toLowerCase().includes(change.friendlyName.toLowerCase())
-                  ? { ...m, isActive: false }
-                  : m
+                change.medicationName.toLowerCase().includes(m.name.toLowerCase())
               );
-            } else if (change.action === 'modify') {
-              updated = updated.map((m) =>
-                m.name.toLowerCase().includes(change.medicationName.toLowerCase()) ||
-                m.friendlyName.toLowerCase().includes(change.friendlyName.toLowerCase())
-                  ? {
-                      ...m,
-                      dosage: change.dosage || m.dosage,
-                      mealAnchor: change.mealAnchor || m.mealAnchor,
-                      instructions: change.instructions || m.instructions,
-                    }
-                  : m
+              if (existingIdx >= 0) {
+                updated[existingIdx] = {
+                  ...updated[existingIdx],
+                  dosage: change.dosage || updated[existingIdx].dosage,
+                  mealAnchor: change.mealAnchor || updated[existingIdx].mealAnchor,
+                  instructions: change.instructions || updated[existingIdx].instructions,
+                  source: 'doctor_rx_ocr' as any,
+                };
+              } else if (change.action === 'add') {
+                updated.push({
+                  id: `med-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                  name: change.medicationName,
+                  friendlyName: change.friendlyName || change.medicationName,
+                  dosage: change.dosage || 'Standard dose',
+                  instructions: change.instructions || 'Take as directed',
+                  mealAnchor: change.mealAnchor || 'morning_breakfast',
+                  shapeDescription: 'Tablet',
+                  color: '#059669',
+                  purpose: change.reason || 'Doctor prescription update',
+                  prescribedBy: profile.doctorName,
+                  isActive: true,
+                  source: 'doctor_rx_ocr' as any,
+                  createdAt: new Date().toISOString(),
+                });
+              }
+            } else if (change.action === 'discontinue') {
+              updated = updated.filter(
+                (m) =>
+                  !m.name.toLowerCase().includes(change.medicationName.toLowerCase()) &&
+                  !change.medicationName.toLowerCase().includes(m.name.toLowerCase())
               );
-            } else if (change.action === 'add') {
-              const newMed: Medication = {
-                id: `med-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-                name: change.medicationName,
-                friendlyName: change.friendlyName,
-                dosage: change.dosage || 'Standard dose',
-                instructions: change.instructions || 'Take with food',
-                mealAnchor: change.mealAnchor || 'after_lunch',
-                shapeDescription: 'Capsule',
-                color: '#059669',
-                purpose: change.reason,
-                prescribedBy: profile.doctorName,
-                isActive: true,
-                createdAt: new Date().toISOString(),
-              };
-              updated.push(newMed);
             }
-          }
+          });
           return updated;
         });
 
-        const auditItem: AuditLogItem = {
+        recordAuditEntry({
           id: `audit-${Date.now()}`,
           actorRole: 'elder',
           actorName: `${profile.name} (Elder Confirmation)`,
@@ -323,10 +602,8 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           timestamp: new Date().toISOString(),
           canElderVeto: true,
           isVetoed: false,
-        };
-        setAuditLogs((prev) => [auditItem, ...prev]);
+        });
       } else if (proposal.medicationData) {
-        // Add single medication to active schedule (from prescription OCR)
         const newMed: Medication = {
           id: `med-${Date.now()}`,
           name: proposal.medicationData.name || proposal.title,
@@ -343,22 +620,20 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
         setMedications((prev) => [...prev, newMed]);
 
-        // Audit Log with ELDER VETO option
-        const auditItem: AuditLogItem = {
+        recordAuditEntry({
           id: `audit-${Date.now()}`,
           actorRole: 'elder',
           actorName: `${profile.name} (Elder Confirmation)`,
           action: `Approved New Medication: ${newMed.friendlyName}`,
           plainEnglishDescription: `Arthur reviewed Dr. Vance's prescription proposal and approved adding ${newMed.friendlyName} (${newMed.dosage}) with ${MEAL_ANCHORS[newMed.mealAnchor]?.label}.`,
           timestamp: new Date().toISOString(),
-          canElderVeto: true, // Arthur can still veto or undo this later!
+          canElderVeto: true,
           isVetoed: false,
           revertedPayload: newMed.id,
-        };
-        setAuditLogs((prev) => [auditItem, ...prev]);
+        });
       }
     } else {
-      const auditItem: AuditLogItem = {
+      recordAuditEntry({
         id: `audit-${Date.now()}`,
         actorRole: 'elder',
         actorName: `${profile.name} (Elder Decision)`,
@@ -367,8 +642,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         timestamp: new Date().toISOString(),
         canElderVeto: false,
         isVetoed: false,
-      };
-      setAuditLogs((prev) => [auditItem, ...prev]);
+      });
     }
   };
 
@@ -377,7 +651,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const item = auditLogs.find((a) => a.id === auditLogId);
     if (!item) return;
 
-    // Mark as vetoed
+    // Mark as vetoed in-place
     setAuditLogs((prev) =>
       prev.map((a) => {
         if (a.id === auditLogId) {
@@ -391,13 +665,12 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    // If it was an added medication, deactivate or remove it
+    // Rollback payload if present
     if (item.revertedPayload) {
       setMedications((prev) => prev.filter((m) => m.id !== item.revertedPayload));
     }
 
-    // Add immediate veto announcement log
-    const vetoNotice: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
       actorName: `${profile.name} (ELDER VETO)`,
@@ -406,8 +679,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [vetoNotice, ...prev]);
+    });
   };
 
   // 5. CARETAKER ACTION: Create AI Proposal from Doctor Prescription
@@ -422,8 +694,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setAiProposals((prev) => [newProposal, ...prev]);
 
-    // Audit log
-    const auditItem: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'caretaker',
       actorName: `${profile.caretakerName}`,
@@ -432,8 +703,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: true,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [auditItem, ...prev]);
+    });
   };
 
   // 6. CARETAKER ACTION: Add/Update Medication Schedule (Mandatory Source)
@@ -466,12 +736,11 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ? `Changed dose of ${completeMed.friendlyName}`
       : `Added Medication: ${completeMed.friendlyName}`;
 
-    // Plain English audit description: "Rahul changed dose, source: prescription photo"
     const plainDesc = isEdit
       ? `${actor} changed dose of ${completeMed.friendlyName} to ${completeMed.dosage}, source: ${sourceLabel}.`
       : `${actor} added ${completeMed.friendlyName} (${completeMed.dosage}), source: ${sourceLabel}.`;
 
-    const auditItem: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'caretaker',
       actorName: actor,
@@ -483,8 +752,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       canElderVeto: true,
       isVetoed: false,
       revertedPayload: completeMed.id,
-    };
-    setAuditLogs((prev) => [auditItem, ...prev]);
+    });
   };
 
   // 6b. CARETAKER/FAMILY ACTION: Refill Medication Inventory
@@ -509,7 +777,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    const auditItem: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'caretaker',
       actorName: actorName,
@@ -520,8 +788,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: true,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [auditItem, ...prev]);
+    });
   };
 
   // 6c. ELDER ACTION: Approve / Keep Audit Action
@@ -529,7 +796,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const item = auditLogs.find((a) => a.id === auditLogId);
     if (!item) return;
 
-    const approvalNotice: AuditLogItem = {
+    recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
       actorName: `${profile.name} (Approved)`,
@@ -538,8 +805,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: new Date().toISOString(),
       canElderVeto: false,
       isVetoed: false,
-    };
-    setAuditLogs((prev) => [approvalNotice, ...prev]);
+    });
   };
 
   // 7. HERO FEATURE: Dispatch Caregiver Digest Email via Resend
@@ -622,6 +888,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAiProposals(INITIAL_AI_PROPOSALS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
     localStorage.removeItem('adept_platform_data_v1');
+    localStorage.removeItem('adept_pin_lockout_caretaker');
   };
 
   return (
@@ -639,6 +906,22 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         activeElderProposal,
         settings,
         lastEmailDispatch,
+        authUser,
+        isElderPaired,
+        isOnboarded,
+        elderPairingCode,
+        pairElderDevice,
+        unpairElderDevice,
+        loginUser,
+        registerUser,
+        logoutUser,
+        completeOnboarding,
+        verifyCaretakerSecurityPin,
+        familyTasks,
+        toggleFamilyTask,
+        addFamilyTask,
+        familyCheerMessages,
+        sendFamilyCheerMessage,
         switchRoleWithPin,
         setDirectRole,
         confirmDose,
@@ -653,6 +936,7 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         refillMedication,
         triggerCaregiverDigest,
         triggerDeviationAlert,
+        recordAuditEntry,
         updateSettings,
         resetDemoData,
       }}
