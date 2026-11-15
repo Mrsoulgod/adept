@@ -5,7 +5,8 @@ import { BaselineDeviationView } from '../BaselineDeviationView';
 import { CaregiverDigestModal } from '../CaregiverDigestModal';
 import { ElderSelectorBar } from '../../shared/ElderSelectorBar';
 import { CareCircleChatModal } from '../../chat/CareCircleChatModal';
-import { Sparkles, MessageCircle, AlertOctagon, PhoneCall } from 'lucide-react';
+import { VitalsScreen } from '../../vitals/VitalsScreen';
+import { Sparkles, MessageCircle, AlertOctagon, PhoneCall, Activity } from 'lucide-react';
 
 export const CaretakerTodayTab: React.FC = () => {
   const {
@@ -16,10 +17,12 @@ export const CaretakerTodayTab: React.FC = () => {
     aiProposals,
     emergencyAlert,
     resolveEmergencyAlert,
+    openAdeptSheet,
   } = useAdept();
 
   const [digestOpen, setDigestOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [vitalsOpen, setVitalsOpen] = useState(false);
 
   // Elder-specific medications
   const elderMeds = medications.filter((m: Medication) =>
@@ -119,20 +122,27 @@ export const CaretakerTodayTab: React.FC = () => {
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="grid grid-cols-3 gap-2 pt-1">
           <button
-            onClick={() => setChatOpen(true)}
-            className="flex-1 h-11 bg-slate-100 hover:bg-emerald-50 hover:text-[#064e3b] border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-98"
+            onClick={() => setVitalsOpen(true)}
+            className="h-11 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-all active:scale-98"
           >
-            <MessageCircle className="w-4 h-4 text-emerald-800" />
-            <span>Chat with {activeElder.name.split(' ')[0]}</span>
+            <Activity className="w-4 h-4 text-[#064e3b]" />
+            <span>Vitals Log</span>
           </button>
           <button
-            onClick={() => setDigestOpen(true)}
-            className="h-11 px-3 bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-98"
+            onClick={() => setChatOpen(true)}
+            className="h-11 bg-slate-100 hover:bg-emerald-50 hover:text-[#064e3b] border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-all active:scale-98"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-emerald-800" />
+            <span>Chat</span>
+          </button>
+          <button
+            onClick={() => openAdeptSheet({ question: "What is Dad's 7-day adherence and stock status?" })}
+            className="h-11 bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-all active:scale-98"
           >
             <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-            <span>Digest</span>
+            <span>Ask Adept</span>
           </button>
         </div>
       </div>
@@ -163,6 +173,15 @@ export const CaretakerTodayTab: React.FC = () => {
         onClose={() => setChatOpen(false)}
         defaultChannelId="group"
       />
+
+      {/* Prompt 9: Vitals Screen Modal */}
+      {vitalsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 overflow-y-auto">
+          <div className="bg-[#FAF8F5] rounded-3xl max-w-md w-full max-h-[92vh] overflow-y-auto shadow-2xl p-4">
+            <VitalsScreen onClose={() => setVitalsOpen(false)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

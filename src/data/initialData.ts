@@ -1,4 +1,15 @@
-import type { Profile, Medication, DoseLog, AIProposal, AuditLogItem, ChatMessage } from '../lib/types';
+import type {
+  Profile,
+  Medication,
+  DoseLog,
+  AIProposal,
+  AuditLogItem,
+  ChatMessage,
+  AdeptEvent,
+  VitalRecord,
+  FamilyVoiceNote,
+  IncidentRecord,
+} from '../lib/types';
 
 export const INITIAL_ELDERS: Profile[] = [
   {
@@ -429,3 +440,255 @@ export const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
     vetoedAt: new Date(Date.now() - 86400000 * 2 + 1800000).toISOString(),
   },
 ];
+
+// ---------------------------------------------------------------------
+// PROMPT 9: INITIAL VITALS (7 & 30-day realistic readings)
+// ---------------------------------------------------------------------
+export const INITIAL_VITALS: VitalRecord[] = [
+  {
+    id: 'vital-bp-today',
+    elderId: 'elder-dad',
+    type: 'bp',
+    systolic: 126,
+    diastolic: 82,
+    pulseBpm: 72,
+    context: 'resting',
+    rangeFlag: 'normal',
+    rangeFlagLabel: 'Normal resting range for Arthur',
+    notes: 'Morning measurement before breakfast tea',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+  },
+  {
+    id: 'vital-sugar-today',
+    elderId: 'elder-dad',
+    type: 'sugar',
+    bloodSugar: 108,
+    context: 'fasting',
+    rangeFlag: 'steady',
+    rangeFlagLabel: 'Steady fasting morning reading',
+    notes: 'Fasting glucose reading with finger-stick meter',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+  },
+  {
+    id: 'vital-weight-today',
+    elderId: 'elder-dad',
+    type: 'weight',
+    weightKg: 74.2,
+    context: 'resting',
+    rangeFlag: 'steady',
+    rangeFlagLabel: 'Steady baseline weight',
+    notes: 'Weekly weigh-in on bathroom scale',
+    loggedBy: 'caretaker',
+    loggedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  // Past historical readings
+  {
+    id: 'vital-bp-1',
+    elderId: 'elder-dad',
+    type: 'bp',
+    systolic: 124,
+    diastolic: 80,
+    pulseBpm: 70,
+    context: 'resting',
+    rangeFlag: 'normal',
+    rangeFlagLabel: 'Normal resting range',
+    notes: 'Recorded after morning walk',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: 'vital-sugar-1',
+    elderId: 'elder-dad',
+    type: 'sugar',
+    bloodSugar: 112,
+    context: 'fasting',
+    rangeFlag: 'steady',
+    rangeFlagLabel: 'Steady fasting reading',
+    notes: 'Morning fasting',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: 'vital-bp-2',
+    elderId: 'elder-dad',
+    type: 'bp',
+    systolic: 132,
+    diastolic: 84,
+    pulseBpm: 74,
+    context: 'resting',
+    rangeFlag: 'normal',
+    rangeFlagLabel: 'Slightly higher after garden stairs',
+    notes: 'After light gardening',
+    loggedBy: 'caretaker',
+    loggedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'vital-sugar-2',
+    elderId: 'elder-dad',
+    type: 'sugar',
+    bloodSugar: 104,
+    context: 'fasting',
+    rangeFlag: 'steady',
+    rangeFlagLabel: 'Normal fasting level',
+    notes: 'Fasting glucose',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'vital-bp-3',
+    elderId: 'elder-dad',
+    type: 'bp',
+    systolic: 125,
+    diastolic: 81,
+    pulseBpm: 68,
+    context: 'resting',
+    rangeFlag: 'normal',
+    rangeFlagLabel: 'Comfortable resting baseline',
+    notes: 'Resting in armchair',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'vital-sugar-3',
+    elderId: 'elder-dad',
+    type: 'sugar',
+    bloodSugar: 110,
+    context: 'fasting',
+    rangeFlag: 'steady',
+    rangeFlagLabel: 'Normal fasting level',
+    notes: 'Morning fasting',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'vital-bp-4',
+    elderId: 'elder-dad',
+    type: 'bp',
+    systolic: 128,
+    diastolic: 82,
+    pulseBpm: 71,
+    context: 'resting',
+    rangeFlag: 'normal',
+    rangeFlagLabel: 'Steady baseline',
+    notes: 'Morning check',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+  },
+  {
+    id: 'vital-bp-5',
+    elderId: 'elder-dad',
+    type: 'bp',
+    systolic: 122,
+    diastolic: 79,
+    pulseBpm: 69,
+    context: 'resting',
+    rangeFlag: 'normal',
+    rangeFlagLabel: 'Calm resting reading',
+    notes: 'Evening reading',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+  {
+    id: 'vital-bp-6',
+    elderId: 'elder-dad',
+    type: 'bp',
+    systolic: 127,
+    diastolic: 83,
+    pulseBpm: 73,
+    context: 'resting',
+    rangeFlag: 'normal',
+    rangeFlagLabel: 'Normal resting baseline',
+    notes: 'Morning check',
+    loggedBy: 'elder',
+    loggedAt: new Date(Date.now() - 86400000 * 6).toISOString(),
+  },
+];
+
+// ---------------------------------------------------------------------
+// PROMPT 14: INITIAL FAMILY VOICE NOTES
+// ---------------------------------------------------------------------
+export const INITIAL_FAMILY_VOICE_NOTES: FamilyVoiceNote[] = [
+  {
+    id: 'vn-today-1',
+    circleId: 'circle-1',
+    senderName: 'Sarah Davies (Daughter)',
+    senderRole: 'caretaker',
+    durationSeconds: 18,
+    recordedAt: 'Today, 7:45 AM',
+    hasBeenPlayed: false,
+    lovedReply: false,
+  },
+];
+
+// ---------------------------------------------------------------------
+// PROMPT 12: INITIAL INCIDENTS
+// ---------------------------------------------------------------------
+export const INITIAL_INCIDENTS: IncidentRecord[] = [];
+
+// ---------------------------------------------------------------------
+// PROMPT 7: DATA SPINE INITIAL EVENTS (Single Source of Truth)
+// ---------------------------------------------------------------------
+export const getInitialEvents = (): AdeptEvent[] => {
+  const events: AdeptEvent[] = [];
+  const initialLogs = getInitialDoseLogs(false);
+
+  // Convert past dose logs into canonical events
+  for (const log of initialLogs) {
+    events.push({
+      id: `evt-${log.id}`,
+      circleId: 'circle-1',
+      actorRole: log.loggedBy,
+      type: log.status === 'taken' ? 'dose_taken' : log.status === 'deferred' ? 'dose_skipped' : 'dose_missed',
+      payload: {
+        medication_id: log.medicationId,
+        medication_name: log.medicationName,
+        meal_anchor: log.mealAnchor,
+        date: log.date,
+        notes: log.notes,
+      },
+      source: 'elder_tap',
+      createdAt: log.loggedAt || `${log.date}T08:30:00Z`,
+    });
+  }
+
+  // Convert initial vitals into events
+  for (const v of INITIAL_VITALS) {
+    events.push({
+      id: `evt-${v.id}`,
+      circleId: 'circle-1',
+      actorRole: v.loggedBy,
+      type: 'vital_logged',
+      payload: {
+        vital_id: v.id,
+        type: v.type,
+        systolic: v.systolic,
+        diastolic: v.diastolic,
+        blood_sugar: v.bloodSugar,
+        weight_kg: v.weightKg,
+        pulse_bpm: v.pulseBpm,
+        context: v.context,
+        range_flag: v.rangeFlag,
+      },
+      source: 'number_pad',
+      createdAt: v.loggedAt,
+    });
+  }
+
+  // Initial checkin event
+  events.push({
+    id: 'evt-checkin-today',
+    circleId: 'circle-1',
+    actorRole: 'elder',
+    type: 'checkin',
+    payload: {
+      wellness_score: 'steady',
+      notes: 'Feeling comfortable and steady after morning tea.',
+    },
+    source: 'face_picker',
+    createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+  });
+
+  return events;
+};

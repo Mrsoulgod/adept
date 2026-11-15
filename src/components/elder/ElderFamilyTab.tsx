@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useAdept } from '../../context/AdeptContext';
-import { Phone, Heart, MessageCircle, Users, User } from 'lucide-react';
+import { Phone, Heart, MessageCircle, Users, BellRing } from 'lucide-react';
 import { CareCircleChatModal } from '../chat/CareCircleChatModal';
 
 export const ElderFamilyTab: React.FC = () => {
-  const { profile, familyCheerMessages } = useAdept();
+  const { profile, familyCheerMessages, requestFamilyCall } = useAdept();
   const [chatOpen, setChatOpen] = useState(false);
   const [targetChannel, setTargetChannel] = useState<'group' | 'sarah-direct' | 'james-direct'>('group');
 
@@ -60,8 +60,8 @@ export const ElderFamilyTab: React.FC = () => {
         <div className="bg-white border-2 border-emerald-600/30 rounded-2xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#064e3b] flex items-center justify-center font-bold">
-                <User className="w-5 h-5" />
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-[#064e3b] flex items-center justify-center font-bold text-xl">
+                👩
               </div>
               <div>
                 <h3 className="text-base font-black text-slate-900">
@@ -74,20 +74,27 @@ export const ElderFamilyTab: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          <div className="grid grid-cols-3 gap-2 pt-1">
             <a
               href={`tel:${profile.caretakerPhone || '555-345-6789'}`}
-              className="h-12 bg-white hover:bg-emerald-50 border border-emerald-600/50 rounded-xl flex items-center justify-center gap-1.5 text-slate-900 font-bold text-xs active:scale-98 transition-all"
+              className="h-12 bg-white hover:bg-emerald-50 border border-emerald-600/50 rounded-xl flex items-center justify-center gap-1 text-slate-900 font-bold text-xs active:scale-98 transition-all"
             >
-              <Phone className="w-4 h-4 text-[#064e3b]" />
-              <span>Call Sarah</span>
+              <Phone className="w-3.5 h-3.5 text-[#064e3b]" />
+              <span>Call</span>
             </a>
             <button
               onClick={() => openChatWith('sarah-direct')}
-              className="h-12 bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs cursor-pointer active:scale-98 transition-all"
+              className="h-12 bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-xl flex items-center justify-center gap-1 font-bold text-xs cursor-pointer active:scale-98 transition-all"
             >
-              <MessageCircle className="w-4 h-4" />
+              <MessageCircle className="w-3.5 h-3.5" />
               <span>Message</span>
+            </button>
+            <button
+              onClick={() => requestFamilyCall('Sarah Davies', profile.name)}
+              className="h-12 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl flex items-center justify-center gap-1 font-bold text-xs cursor-pointer active:scale-98 transition-all"
+            >
+              <BellRing className="w-3.5 h-3.5 text-amber-800" />
+              <span>Ask to Call Me</span>
             </button>
           </div>
         </div>
@@ -96,8 +103,8 @@ export const ElderFamilyTab: React.FC = () => {
         <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
-                <User className="w-5 h-5" />
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xl">
+                👨
               </div>
               <div>
                 <h3 className="text-base font-black text-slate-900">
@@ -110,20 +117,27 @@ export const ElderFamilyTab: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          <div className="grid grid-cols-3 gap-2 pt-1">
             <a
               href="tel:555-789-0123"
-              className="h-12 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl flex items-center justify-center gap-1.5 text-slate-900 font-bold text-xs active:scale-98 transition-all"
+              className="h-12 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl flex items-center justify-center gap-1 text-slate-900 font-bold text-xs active:scale-98 transition-all"
             >
-              <Phone className="w-4 h-4 text-slate-600" />
-              <span>Call James</span>
+              <Phone className="w-3.5 h-3.5 text-slate-600" />
+              <span>Call</span>
             </a>
             <button
               onClick={() => openChatWith('james-direct')}
-              className="h-12 bg-slate-800 hover:bg-slate-900 text-white rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs cursor-pointer active:scale-98 transition-all"
+              className="h-12 bg-slate-800 hover:bg-slate-900 text-white rounded-xl flex items-center justify-center gap-1 font-bold text-xs cursor-pointer active:scale-98 transition-all"
             >
-              <MessageCircle className="w-4 h-4" />
+              <MessageCircle className="w-3.5 h-3.5" />
               <span>Message</span>
+            </button>
+            <button
+              onClick={() => requestFamilyCall('James Davies', profile.name)}
+              className="h-12 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl flex items-center justify-center gap-1 font-bold text-xs cursor-pointer active:scale-98 transition-all"
+            >
+              <BellRing className="w-3.5 h-3.5 text-amber-800" />
+              <span>Ask to Call Me</span>
             </button>
           </div>
         </div>

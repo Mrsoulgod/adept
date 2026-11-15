@@ -3,6 +3,8 @@ import { useAdept } from '../../context/AdeptContext';
 import { LogoHeader } from '../shared/LogoHeader';
 import { DemoModeModal } from '../shared/DemoModeModal';
 import { WalkthroughTour } from '../walkthrough/WalkthroughTour';
+import { IncidentModal } from '../emergency/IncidentModal';
+import { AskAdeptSheet } from '../ai/AskAdeptSheet';
 import { ShieldAlert } from 'lucide-react';
 
 // Elder Views
@@ -47,7 +49,16 @@ export const MobileShell: React.FC<MobileShellProps> = ({
   onOpenSettings,
   onStartOnboardingTest,
 }) => {
-  const { role, isTourRunning, endWalkthroughTour } = useAdept();
+  const {
+    role,
+    isTourRunning,
+    endWalkthroughTour,
+    activeIncident,
+    isAdeptSheetOpen,
+    closeAdeptSheet,
+    adeptContextMed,
+    adeptInitialQuestion,
+  } = useAdept();
   const [demoModalOpen, setDemoModalOpen] = useState(false);
   const [bounceNotice, setBounceNotice] = useState<string | null>(null);
 
@@ -348,6 +359,22 @@ export const MobileShell: React.FC<MobileShellProps> = ({
           onStartOnboardingTest={onStartOnboardingTest}
         />
       )}
+
+      {/* Prompt 12: Incident Screen with Escalation & "I'm on it" Claim Locking */}
+      {activeIncident && activeIncident.status !== 'resolved' && role !== 'elder' && (
+        <IncidentModal
+          incident={activeIncident}
+          onClose={() => {}}
+        />
+      )}
+
+      {/* Prompt 8 & 10: Ask Adept AI Bottom Sheet on all roles */}
+      <AskAdeptSheet
+        isOpen={isAdeptSheetOpen}
+        onClose={closeAdeptSheet}
+        contextMed={adeptContextMed}
+        initialQuestion={adeptInitialQuestion}
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAdept } from '../../context/AdeptContext';
-import type { MealAnchor } from '../../lib/types';
+import type { MealAnchor, Medication } from '../../lib/types';
 import { MEAL_ANCHORS } from '../../lib/types';
 import {
   CheckCircle2,
@@ -14,13 +14,15 @@ import {
   Sun,
   Sunset,
   AlertTriangle,
-  PlusCircle,
-  MinusCircle,
-  RefreshCw,
   MessageCircle,
+  PhoneCall,
 } from 'lucide-react';
 import { EmergencySosModal } from '../emergency/EmergencySosModal';
 import { CareCircleChatModal } from '../chat/CareCircleChatModal';
+import { FamilyVoiceNoteCard } from './FamilyVoiceNoteCard';
+import { InactivitySafetyCheckModal } from './InactivitySafetyCheckModal';
+import { AskAdeptSheet } from '../ai/AskAdeptSheet';
+import { getWhyThisPillHelper } from '../../lib/geminiAiService';
 
 export const ElderScreen: React.FC = () => {
   const {
@@ -39,6 +41,14 @@ export const ElderScreen: React.FC = () => {
     elderVetoAction,
     elderApproveAuditAction,
     auditLogs,
+    familyVoiceNotes,
+    activeIncident,
+    triggerSosWithEscalation,
+    isAdeptSheetOpen,
+    openAdeptSheet,
+    closeAdeptSheet,
+    adeptContextMed,
+    adeptInitialQuestion,
   } = useAdept();
 
   const [activeView, setActiveView] = useState<'main' | 'veto'>('main');
@@ -46,6 +56,13 @@ export const ElderScreen: React.FC = () => {
   const [selectedFeeling, setSelectedFeeling] = useState<string | null>(null);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [inactivityCheckOpen, setInactivityCheckOpen] = useState(false);
+
+  // Press-and-hold 2s + 5s cancel countdown for SOS (Prompt 12)
+  const [sosHoldProgress, setSosHoldProgress] = useState(0);
+  const [sosCountdown, setSosCountdown] = useState<number | null>(null);
+  const holdTimerRef = useRef<any>(null);
+  const cancelCountdownRef = useRef<any>(null);
 
   // Web Speech API state
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -170,7 +187,7 @@ export const ElderScreen: React.FC = () => {
       thankYouFeeling: 'धन्यवाद आर्थर जी! आपकी तबीयत की जानकारी सारा को मिल गई है।',
       reviewVeto: 'बदलाव देखें या रद्द (Veto) करें',
       allCaughtUpTitle: 'सब कुछ शांत और ठीक है, आर्थर जी।',
-      allCaughtUpBody: 'इस पहर की सभी दवाइयाँ पूरी हो चुकी हैं। आपका दिन शुभ हो।',
+      allCaughtUpBody: 'इस पहर की सभी दवाइयां पूरी हो चुकी हैं। आपका दिन शुभ हो।',
       vetoTitle: 'हालिया बदलाव और आपका वीटो अधिकार',
       vetoDesc: 'आप हर फैसले के केंद्र में हैं। किसी भी बदलाव को रद्द करने के लिए वीटो दबाएं।',
       vetoBtn: 'यह बदलाव रद्द करें (Veto)',
@@ -221,33 +238,25 @@ export const ElderScreen: React.FC = () => {
         }
       }
     };
-  }, [language, nextPendingMed]);
+  }, [language]);
 
-  // Voice command processor
   const handleVoiceCommand = (transcript: string) => {
-    const clean = transcript.toLowerCase().trim();
-    const isHindiMatch =
-      clean.includes('goli kha li') ||
-      clean.includes('maine goli') ||
-      clean.includes('dawa kha li') ||
-      clean.includes('le li') ||
-      clean.includes('kha li') ||
-      clean.includes('goli li');
+    const lower = transcript.toLowerCase();
+    const isTakenIntent =
+      lower.includes('maine goli kha li') ||
+      lower.includes('goli kha li') ||
+      lower.includes('le li') ||
+      lower.includes('took my pill') ||
+      lower.includes('taken') ||
+      lower.includes('done') ||
+      lower.includes('kha li');
 
-    const isEnglishMatch =
-      clean.includes('took my pill') ||
-      clean.includes('took') ||
-      clean.includes('taken') ||
-      clean.includes('i have taken') ||
-      clean.includes('done') ||
-      clean.includes('yes');
-
-    if (isHindiMatch || isEnglishMatch) {
+    if (isTakenIntent) {
       if (nextPendingMed) {
         confirmDose(nextPendingMed.id, `Voice confirmed: "${transcript}"`);
         const confirmMsg =
           language === 'hi'
-            ? `आवाज़ सुनी गई: "${transcript}" • दवाई दर्ज हो गई!`
+            ? `आवाज़ सुनी गई: "${transcript}" • ${nextPendingMed.friendlyName} ले ली गई!`
             : `Voice heard: "${transcript}" • Confirmed!`;
         setFeedbackNotice(confirmMsg);
 
@@ -273,7 +282,6 @@ export const ElderScreen: React.FC = () => {
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      // Browser doesn't support Web Speech API, trigger direct test
       handleVoiceCommand('maine goli kha li');
       return;
     }
@@ -293,6 +301,68 @@ export const ElderScreen: React.FC = () => {
 
   const handleSimulateVoice = () => {
     handleVoiceCommand('maine goli kha li');
+  };
+
+  // 2s Press-and-hold SOS Handlers (Prompt 12)
+  const startSosHold = () => {
+    if (sosCountdown !== null) return;
+    const startTime = Date.now();
+    holdTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const pct = Math.min(100, Math.round((elapsed / 2000) * 100));
+      setSosHoldProgress(pct);
+      if (pct >= 100) {
+        clearInterval(holdTimerRef.current);
+        if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+        setSosCountdown(5);
+      }
+    }, 40);
+  };
+
+  const cancelSosHold = () => {
+    if (holdTimerRef.current) {
+      clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    if (sosHoldProgress < 100) {
+      setSosHoldProgress(0);
+    }
+  };
+
+  useEffect(() => {
+    if (sosCountdown === null) return;
+    if (sosCountdown <= 0) {
+      triggerSosWithEscalation(activeElderId);
+      setSosCountdown(null);
+      setSosHoldProgress(0);
+      return;
+    }
+    cancelCountdownRef.current = setTimeout(() => {
+      setSosCountdown((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => {
+      if (cancelCountdownRef.current) clearTimeout(cancelCountdownRef.current);
+    };
+  }, [sosCountdown, activeElderId, triggerSosWithEscalation]);
+
+  const handleAbortSosCountdown = () => {
+    if (cancelCountdownRef.current) clearTimeout(cancelCountdownRef.current);
+    setSosCountdown(null);
+    setSosHoldProgress(0);
+  };
+
+  // "Why this pill?" Voice Helper (Prompt 10)
+  const handleWhyThisPill = async (med: Medication) => {
+    openAdeptSheet({ med, question: `Why this pill: ${med.friendlyName}?` });
+    try {
+      const helper = await getWhyThisPillHelper(med, language);
+      if ('speechSynthesis' in window) {
+        const spoken = `${helper.whatItIsFor} ${helper.howToTake} ${helper.oneThingToWatch}`;
+        const utter = new SpeechSynthesisUtterance(spoken);
+        utter.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+        window.speechSynthesis.speak(utter);
+      }
+    } catch {}
   };
 
   // -------------------------------------------------------------
@@ -465,7 +535,6 @@ export const ElderScreen: React.FC = () => {
 
           <div className="bg-white border-2 border-[#EBDBC1] rounded-3xl p-6 sm:p-7 mb-6 space-y-4 shadow-xs">
             {hasMultipleChanges ? (
-              /* Post-Visit Voice Note Multi-Change List */
               <div className="space-y-4">
                 <p className="text-xl text-[#474C46] leading-relaxed">
                   {activeElderProposal.summary}
@@ -489,37 +558,19 @@ export const ElderScreen: React.FC = () => {
                             : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
                         }`}
                       >
-                        <div className="flex items-center gap-2 font-bold text-xl">
-                          {change.action === 'discontinue' && (
-                            <MinusCircle className="w-6 h-6 text-rose-700 shrink-0" />
-                          )}
-                          {change.action === 'modify' && (
-                            <RefreshCw className="w-6 h-6 text-sky-700 shrink-0" />
-                          )}
-                          {change.action === 'add' && (
-                            <PlusCircle className="w-6 h-6 text-emerald-700 shrink-0" />
-                          )}
+                        <div className="flex items-center justify-between font-bold">
                           <span>
-                            {change.action === 'discontinue'
-                              ? language === 'hi'
-                                ? `बंद करें: ${change.friendlyName}`
-                                : `Stop: ${change.friendlyName}`
-                              : change.action === 'modify'
-                              ? language === 'hi'
-                                ? `बदलें: ${change.friendlyName} (${change.dosage})`
-                                : `Update: ${change.friendlyName} (${change.dosage})`
-                              : language === 'hi'
-                              ? `जोड़ें: ${change.friendlyName} (${change.dosage})`
-                              : `Add: ${change.friendlyName} (${change.dosage})`}
+                            {change.friendlyName || change.medicationName} ({change.dosage})
+                          </span>
+                          <span className="text-xs uppercase px-2 py-0.5 rounded-full font-bold">
+                            {change.action}
                           </span>
                         </div>
-
                         {changeAnchor && (
-                          <div className="text-base text-slate-700 mt-1 font-semibold">
-                            {changeAnchor.label} ({changeAnchor.windowLabel})
+                          <div className="text-sm font-semibold text-slate-700 mt-1">
+                            With: {changeAnchor.label} ({changeAnchor.windowLabel})
                           </div>
                         )}
-
                         {change.instructions && (
                           <div className="text-base text-slate-600 mt-0.5">
                             {change.instructions}
@@ -531,7 +582,6 @@ export const ElderScreen: React.FC = () => {
                 </div>
               </div>
             ) : (
-              /* Single Medication Proposal from Prescription OCR */
               <div className="space-y-4">
                 <div className="text-xl font-bold text-[#1A1D1A]">
                   {language === 'hi' ? 'कब लेनी है:' : 'When to take it:'}
@@ -551,7 +601,6 @@ export const ElderScreen: React.FC = () => {
               </div>
             )}
 
-            {/* Reassurance text */}
             <p className="text-lg text-[#92631E] font-medium italic pt-1">
               {language === 'hi'
                 ? 'जब तक आप हाँ नहीं कहते, यह दिनचर्या में नहीं जुड़ेगी।'
@@ -608,7 +657,7 @@ export const ElderScreen: React.FC = () => {
   // -------------------------------------------------------------
   return (
     <div id="elder-screen-root" className="min-h-screen bg-[#FAF8F5] text-[#1A1D1A] p-6 max-w-xl mx-auto flex flex-col justify-between font-sans">
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Top Header: Time-aware greeting & Hindi/English Toggle */}
         <header className="pt-2">
           <div className="flex items-center justify-between gap-3 mb-3">
@@ -617,28 +666,39 @@ export const ElderScreen: React.FC = () => {
               <span>{nextPendingMed ? t.windowOpen : t.allCalm}</span>
             </div>
 
-            {/* Language Switcher */}
-            <div className="flex items-center bg-white border border-[#EAE5DB] p-1 rounded-2xl shadow-xs">
+            <div className="flex items-center gap-2">
+              {/* Ask Adept AI Trigger Button */}
               <button
-                onClick={() => setLanguage('en')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  language === 'en'
-                    ? 'bg-[#244937] text-white shadow-xs'
-                    : 'text-[#70756F] hover:text-[#1A1D1A]'
-                }`}
+                onClick={() => openAdeptSheet({ question: "What's next for today?" })}
+                className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
               >
-                English
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Ask Adept</span>
               </button>
-              <button
-                onClick={() => setLanguage('hi')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  language === 'hi'
-                    ? 'bg-[#244937] text-white shadow-xs'
-                    : 'text-[#70756F] hover:text-[#1A1D1A]'
-                }`}
-              >
-                हिंदी
-              </button>
+
+              {/* Language Switcher */}
+              <div className="flex items-center bg-white border border-[#EAE5DB] p-1 rounded-2xl shadow-xs">
+                <button
+                  onClick={() => setLanguage('en')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    language === 'en'
+                      ? 'bg-[#244937] text-white shadow-xs'
+                      : 'text-[#70756F] hover:text-[#1A1D1A]'
+                  }`}
+                >
+                  EN
+                </button>
+                <button
+                  onClick={() => setLanguage('hi')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    language === 'hi'
+                      ? 'bg-[#244937] text-white shadow-xs'
+                      : 'text-[#70756F] hover:text-[#1A1D1A]'
+                  }`}
+                >
+                  हिंदी
+                </button>
+              </div>
             </div>
           </div>
 
@@ -655,14 +715,64 @@ export const ElderScreen: React.FC = () => {
           </p>
         </header>
 
-        {/* Convenient Emergency SOS & Family Chat Action Bar */}
+        {/* Prompt 12: Reassurance Banner if SOS Incident is Open */}
+        {activeIncident && activeIncident.status !== 'resolved' && (
+          <div className="bg-emerald-900 border-2 border-emerald-400 text-white p-5 rounded-3xl shadow-lg space-y-3 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-7 h-7 text-emerald-300 shrink-0 mt-0.5 animate-pulse" />
+              <div>
+                <h3 className="text-xl font-bold leading-tight">
+                  {activeIncident.status === 'claimed'
+                    ? `Help is coming: ${activeIncident.claimedBy || 'Sarah'} is on it`
+                    : 'Help alert sent to your family! Someone is responding...'}
+                </h3>
+                <p className="text-sm text-emerald-200 mt-1">
+                  Your phone is connected. Keep calm, we are with you.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-emerald-700/60">
+              <a
+                href="tel:112"
+                className="h-11 bg-white hover:bg-slate-100 text-emerald-950 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs shadow-xs"
+              >
+                <PhoneCall className="w-4 h-4 text-emerald-900" />
+                <span>Call 112 (EMS)</span>
+              </a>
+              <a
+                href={`tel:${profile.doctorPhone || '555-234-8901'}`}
+                className="h-11 bg-emerald-800 hover:bg-emerald-700 text-white border border-emerald-500 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs"
+              >
+                <span>Dr. {profile.doctorName || 'Vance'}</span>
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Prompt 14: FAMILY VOICE NOTE AS FIRST PROMINENT CARD */}
+        {familyVoiceNotes && familyVoiceNotes.length > 0 && (
+          <FamilyVoiceNoteCard note={familyVoiceNotes[0]} />
+        )}
+
+        {/* Emergency SOS & Family Chat Action Bar */}
         <div className="grid grid-cols-2 gap-3 pt-1">
-          {/* Emergency SOS Button (Max touch target 56px+, AAA contrast) */}
+          {/* Prompt 12: Permanent SOS Button with 2s press-and-hold */}
           <button
-            onClick={() => setEmergencyOpen(true)}
-            className="min-h-[64px] bg-red-600 hover:bg-red-700 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-md cursor-pointer active:scale-98 transition-all"
+            onMouseDown={startSosHold}
+            onMouseUp={cancelSosHold}
+            onMouseLeave={cancelSosHold}
+            onTouchStart={startSosHold}
+            onTouchEnd={cancelSosHold}
+            className="min-h-[64px] relative overflow-hidden bg-red-600 hover:bg-red-700 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-md cursor-pointer active:scale-98 transition-all select-none"
           >
-            <div className="flex items-center gap-2.5">
+            {/* Visual fill indicator during 2s hold */}
+            {sosHoldProgress > 0 && (
+              <div
+                className="absolute inset-0 bg-red-800 transition-all pointer-events-none"
+                style={{ width: `${sosHoldProgress}%` }}
+              />
+            )}
+            <div className="relative z-10 flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-6 h-6 text-white" />
               </div>
@@ -671,11 +781,11 @@ export const ElderScreen: React.FC = () => {
                   {language === 'hi' ? 'आपातकालीन' : 'Emergency'}
                 </div>
                 <div className="text-xs text-red-100 font-bold">
-                  {language === 'hi' ? 'तुरंत मदद' : 'SOS & Help'}
+                  {sosHoldProgress > 0 ? `Hold (${sosHoldProgress}%)` : (language === 'hi' ? '2s दबाए रखें' : 'Hold 2s')}
                 </div>
               </div>
             </div>
-            <span className="text-xs bg-white text-red-700 px-2 py-1 rounded-full font-black">
+            <span className="relative z-10 text-xs bg-white text-red-700 px-2 py-1 rounded-full font-black">
               SOS
             </span>
           </button>
@@ -747,6 +857,15 @@ export const ElderScreen: React.FC = () => {
               </div>
             </div>
 
+            {/* Prompt 10: "Why this pill?" Voice Helper Button */}
+            <button
+              onClick={() => handleWhyThisPill(nextPendingMed)}
+              className="w-full min-h-[52px] bg-[#FBF5EA] hover:bg-[#F5EAD3] border border-[#EBDBC1] text-[#7A4F13] rounded-2xl px-4 py-2.5 flex items-center justify-center gap-2 font-bold text-base cursor-pointer active:scale-98 transition-all"
+            >
+              <Volume2 className="w-5 h-5 text-[#92631E]" />
+              <span>{language === 'hi' ? 'यह गोली क्यों? (सुनें)' : 'Why this pill? (Listen)'}</span>
+            </button>
+
             {/* BIG ACTION BUTTONS: TAKEN / LATER / SKIP */}
             <div className="space-y-3.5 pt-2">
               {/* 1. TAKEN (Giant Calm Accent Button) */}
@@ -799,9 +918,7 @@ export const ElderScreen: React.FC = () => {
               </div>
             </div>
 
-            {/* ========================================================= */}
-            {/* HERO 2: BIG VOICE BUTTON (Web Speech API)                */}
-            {/* ========================================================= */}
+            {/* HERO 2: BIG VOICE BUTTON (Web Speech API) */}
             <div className="pt-2 border-t border-[#EAE5DB]">
               <div className="flex flex-col sm:flex-row items-center gap-3">
                 <button
@@ -826,7 +943,6 @@ export const ElderScreen: React.FC = () => {
                   )}
                 </button>
 
-                {/* Simulated voice test pill for instant zero-friction review */}
                 <button
                   onClick={handleSimulateVoice}
                   title="Simulate speech: 'maine goli kha li'"
@@ -846,7 +962,6 @@ export const ElderScreen: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* ALL CAUGHT UP SCREEN (Calm by Default) */
           <div className="bg-white border-2 border-[#EAE5DB] rounded-3xl p-8 text-center space-y-4 shadow-sm">
             <div className="w-16 h-16 rounded-full bg-[#EAF2EC] text-[#244937] flex items-center justify-center mx-auto text-3xl font-bold">
               ✓
@@ -860,9 +975,7 @@ export const ElderScreen: React.FC = () => {
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* HERO 3: CALM 3-ITEM SUMMARY OF THE DAY (Meal Anchors)    */}
-        {/* ========================================================= */}
+        {/* HERO 3: CALM 3-ITEM SUMMARY OF THE DAY (Meal Anchors) */}
         <section className="bg-white border border-[#EAE5DB] rounded-3xl p-6 shadow-xs space-y-4">
           <h3 className="text-lg font-bold text-[#1A1D1A] uppercase tracking-wide">
             {t.summaryTitle}
@@ -964,9 +1077,7 @@ export const ElderScreen: React.FC = () => {
           </div>
         </section>
 
-        {/* ========================================================= */}
-        {/* HERO 4: ONE QUESTION DAILY "HOW DO YOU FEEL?" (4 FACES)   */}
-        {/* ========================================================= */}
+        {/* HERO 4: ONE QUESTION DAILY "HOW DO YOU FEEL?" (4 FACES) */}
         <section id="elder-feeling-checkin" className="bg-white border border-[#EAE5DB] rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
           <div>
             <h3 className="text-2xl font-bold text-[#1A1D1A] tracking-tight">
@@ -1010,7 +1121,7 @@ export const ElderScreen: React.FC = () => {
               <span className="font-bold text-lg text-[#1A1D1A]">{t.steady}</span>
             </button>
 
-            {/* Face 3: Tired (Warm Amber) */}
+            {/* Face 3: Tired */}
             <button
               onClick={() => {
                 setSelectedFeeling('tired');
@@ -1027,7 +1138,7 @@ export const ElderScreen: React.FC = () => {
               <span className="font-bold text-lg text-[#1A1D1A]">{t.tired}</span>
             </button>
 
-            {/* Face 4: Discomfort (Warm Amber, Never Shame) */}
+            {/* Face 4: Discomfort */}
             <button
               onClick={() => {
                 setSelectedFeeling('discomfort');
@@ -1057,7 +1168,34 @@ export const ElderScreen: React.FC = () => {
         </button>
       </footer>
 
-      {/* Emergency & SOS Modal */}
+      {/* Prompt 12: 5s Cancel Countdown Modal */}
+      {sosCountdown !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-950/90 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white border-4 border-red-600 rounded-3xl max-w-sm w-full p-6 text-center space-y-5 shadow-2xl">
+            <div className="w-20 h-20 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto text-4xl font-black animate-pulse">
+              {sosCountdown}
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-slate-900">
+                {language === 'hi' ? `आपातकालीन सूचना: ${sosCountdown}s` : `Emergency Alert in ${sosCountdown}s`}
+              </h2>
+              <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                {language === 'hi'
+                  ? 'सारा और जेम्स को आपका स्थान भेजा जा रहा है। रद्द करने के लिए नीचे दबाएं।'
+                  : 'Alerting Sarah, James, and care circle with your live location link.'}
+              </p>
+            </div>
+            <button
+              onClick={handleAbortSosCountdown}
+              className="w-full min-h-[64px] bg-slate-900 hover:bg-black text-white text-xl font-bold rounded-2xl cursor-pointer active:scale-98 transition-all"
+            >
+              {language === 'hi' ? 'रद्द करें (मैं ठीक हूँ)' : "Cancel SOS (I'm okay)"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Emergency & SOS Direct Options Modal */}
       <EmergencySosModal
         isOpen={emergencyOpen}
         onClose={() => setEmergencyOpen(false)}
@@ -1068,6 +1206,25 @@ export const ElderScreen: React.FC = () => {
         isOpen={chatOpen}
         onClose={() => setChatOpen(false)}
         defaultChannelId="group"
+      />
+
+      {/* Prompt 13: Inactivity Safety Net Modal */}
+      <InactivitySafetyCheckModal
+        isOpen={inactivityCheckOpen}
+        onConfirmOkay={() => setInactivityCheckOpen(false)}
+        onSnooze={() => setInactivityCheckOpen(false)}
+        onTriggerSos={() => {
+          setInactivityCheckOpen(false);
+          triggerSosWithEscalation(activeElderId);
+        }}
+      />
+
+      {/* Prompt 8 & 10: Ask Adept AI Bottom Sheet */}
+      <AskAdeptSheet
+        isOpen={isAdeptSheetOpen}
+        onClose={closeAdeptSheet}
+        contextMed={adeptContextMed}
+        initialQuestion={adeptInitialQuestion}
       />
     </div>
   );

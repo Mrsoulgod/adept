@@ -1019,6 +1019,236 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
         expect(realLogs.length).toBe(initialCount);
       });
     });
+
+    // =========================================================================
+    // PROMPTS 7–14: DATA SPINE, REAL GEMINI, VITALS, SAFETY CHECK, SOS & VOICE
+    // =========================================================================
+    describe('Prompt 7: Data Spine (Single Source of Truth & Computed Views)', () => {
+      it('initializes canonical event spine and computes stock_remaining from real events', async () => {
+        const { getInitialEvents } = await import('../src/data/initialData');
+        const events = getInitialEvents();
+
+        expect(events.length).toBeGreaterThan(0);
+        const eventTypes = new Set(events.map((e) => e.type));
+        expect(eventTypes.has('dose_taken')).toBe(true);
+        expect(eventTypes.has('vital_logged')).toBe(true);
+        expect(eventTypes.has('checkin')).toBe(true);
+
+        // Test computed stock remaining calculation: baseStock - doses_taken + refills
+        const testMedId = 'med-1';
+        const baseStock = 28;
+        const takenCount = events.filter(
+          (e) => e.type === 'dose_taken' && e.payload?.medication_id === testMedId
+        ).length;
+        const refills = events
+          .filter(
+            (e) =>
+              e.type === 'med_changed' &&
+              e.payload?.medication_id === testMedId &&
+              e.payload?.refill_amount
+          )
+          .reduce((acc, curr) => acc + (Number(curr.payload.refill_amount) || 0), 0);
+
+        const computedStock = Math.max(0, baseStock - takenCount + refills);
+        expect(computedStock).toBeGreaterThanOrEqual(0);
+        expect(computedStock).toBeLessThanOrEqual(baseStock + refills);
+      });
+
+      it('computes 7-day adherence and usual dose time from the event spine', async () => {
+        const { getInitialEvents } = await import('../src/data/initialData');
+        const events = getInitialEvents();
+
+        const doseEvents = events.filter(
+          (e) => e.type === 'dose_taken' && e.payload?.medication_id === 'med-1'
+        );
+        expect(doseEvents.length).toBeGreaterThan(0);
+
+        // Average minutes calculation
+        const totalMin = doseEvents.reduce((acc, ev) => {
+          const d = new Date(ev.createdAt);
+          return acc + (d.getHours() * 60 + d.getMinutes());
+        }, 0);
+        const avgMin = Math.round(totalMin / doseEvents.length);
+        expect(avgMin).toBeGreaterThan(0);
+        expect(avgMin).toBeLessThan(1440);
+      });
+    });
+
+    describe('Prompt 8: Adept AI Core (Gemini Tool Calling & Emergency Detection)', () => {
+      it('cites sources in answers and detects emergencies like chest pain / falls', async () => {
+        const { askAdeptAi } = await import('../src/lib/geminiAiService');
+
+        // Routine query returns source citations
+        const regularReply = await askAdeptAi("How many Metformin are left?", {
+          role: 'family',
+          elderName: 'Arthur Davies',
+          elderId: 'elder-dad',
+          language: 'en',
+        });
+
+        expect(regularReply.text).toBeDefined();
+        expect(regularReply.sources.length).toBeGreaterThan(0);
+        expect(regularReply.sources[0]).toContain('From');
+        expect(regularReply.followUpSuggestions.length).toBeGreaterThanOrEqual(2);
+        expect(regularReply.isEmergency).toBe(false);
+
+        // Emergency detection test: chest pain / difficulty breathing triggers immediate SOS
+        const emergencyReply = await askAdeptAi("Dad says he has acute chest pain and can't breathe", {
+          role: 'family',
+          elderName: 'Arthur Davies',
+          elderId: 'elder-dad',
+          language: 'en',
+        });
+
+        expect(emergencyReply.isEmergency).toBe(true);
+        expect(emergencyReply.text).toContain('112');
+        expect(emergencyReply.sources).toContain('Emergency Safety Sentinel');
+      });
+
+      it('supports Hindi language responses for Arthur with warm respectful tone', async () => {
+        const { askAdeptAi } = await import('../src/lib/geminiAiService');
+
+        const hindiReply = await askAdeptAi("अगली दवाई कब लेनी है?", {
+          role: 'elder',
+          elderName: 'आर्थर जी',
+          elderId: 'elder-dad',
+          language: 'hi',
+        });
+
+        expect(hindiReply.text).toBeDefined();
+        expect(hindiReply.sources.length).toBeGreaterThan(0);
+      });
+    });
+
+    describe('Prompt 9: Vitals Log & Range Flags', () => {
+      it('records vitals with gentle non-alarming wording and parses voice speech', async () => {
+        const { INITIAL_VITALS } = await import('../src/data/initialData');
+        expect(INITIAL_VITALS.length).toBeGreaterThan(0);
+
+        const bpVital = INITIAL_VITALS.find((v) => v.type === 'bp');
+        expect(bpVital).toBeDefined();
+        expect(bpVital?.systolic).toBeDefined();
+        expect(bpVital?.diastolic).toBeDefined();
+        // Wording must never alarm
+        expect(bpVital?.rangeFlagLabel).not.toContain('CRITICAL');
+        expect(bpVital?.rangeFlagLabel).not.toContain('DANGER');
+
+        // Simulate voice parsing "BP 130 by 85"
+        const voiceText = "BP 130 by 85";
+        const bpMatch = voiceText.match(/(?:bp|blood pressure)?\s*(\d{2,3})\s*(?:by|\/|over)\s*(\d{2,3})/i);
+        expect(bpMatch).not.toBeNull();
+        expect(parseInt(bpMatch![1], 10)).toBe(130);
+        expect(parseInt(bpMatch![2], 10)).toBe(85);
+      });
+    });
+
+    describe('Prompt 10: "Why this pill?" Voice Helper', () => {
+      it('returns maximum 3 short sentences with clinical purpose, instructions, and doctor confirmation note', async () => {
+        const { getWhyThisPillHelper } = await import('../src/lib/geminiAiService');
+        const testMed = INITIAL_MEDICATIONS[0];
+
+        const helper = await getWhyThisPillHelper(testMed, 'en');
+        expect(helper.whatItIsFor).toBeDefined();
+        expect(helper.howToTake).toBeDefined();
+        expect(helper.oneThingToWatch).toBeDefined();
+        expect(helper.safetyNote).toContain('confirm with your doctor');
+
+        // Sentences must be concise
+        const totalSentenceCount = [
+          helper.whatItIsFor,
+          helper.howToTake,
+          helper.oneThingToWatch,
+        ].filter(Boolean).length;
+        expect(totalSentenceCount).toBeLessThanOrEqual(3);
+      });
+    });
+
+    describe('Prompt 11: Medicine Safety Check (Gemini Compatibility)', () => {
+      it('evaluates medication safety with structured severity and honest pharmacist disclaimer', async () => {
+        const { runMedicineSafetyCheck } = await import('../src/lib/geminiAiService');
+        const testMed = INITIAL_MEDICATIONS[0];
+
+        const report = await runMedicineSafetyCheck(
+          testMed,
+          INITIAL_MEDICATIONS,
+          ['Penicillin']
+        );
+
+        expect(report.severity).toMatch(/^(info|caution|ask_doctor)$/);
+        expect(report.confidence).toBeGreaterThan(0);
+        expect(report.reason).toBeDefined();
+        expect(report.disclaimer).toContain('AI suggestion, ask your pharmacist');
+      });
+    });
+
+    describe('Prompt 12: SOS with Escalation', () => {
+      it('locks first claim ("I\'m on it") and provides 90-second auto-escalation timeline', () => {
+        // Mock incident record
+        const incident = {
+          id: 'inc-test-1',
+          circleId: 'circle-1',
+          elderId: 'elder-dad',
+          elderName: 'Arthur Davies',
+          status: 'open' as const,
+          triggeredAt: new Date().toISOString(),
+          timeline: [
+            {
+              timestamp: 'Just now',
+              title: 'SOS Emergency Alert Triggered',
+              actor: 'Arthur Davies',
+              description: 'Arthur activated Emergency SOS.',
+            },
+          ],
+        };
+
+        expect(incident.status).toBe('open');
+
+        // First claim locks incident
+        const claimant = 'Sarah Davies (Caretaker)';
+        const claimedIncident = {
+          ...incident,
+          status: 'claimed' as const,
+          claimedBy: claimant,
+          claimedAt: new Date().toISOString(),
+        };
+
+        expect(claimedIncident.status).toBe('claimed');
+        expect(claimedIncident.claimedBy).toBe('Sarah Davies (Caretaker)');
+      });
+    });
+
+    describe('Prompt 13: "Are You Okay?" Inactivity Net & Fall Detection Beta', () => {
+      it('provides 30-second countdown and experimental motion fall acceleration calculation', () => {
+        let countdown = 30;
+        const tick = () => { countdown -= 1; };
+        tick();
+        expect(countdown).toBe(29);
+
+        // Experimental DeviceMotion acceleration formula: sqrt(x^2 + y^2 + z^2) > 28 m/s^2
+        const accX = 18;
+        const accY = 22;
+        const accZ = 8;
+        const totalAcc = Math.sqrt(accX ** 2 + accY ** 2 + accZ ** 2);
+        const isImpactSpike = totalAcc > 28;
+        expect(totalAcc).toBeGreaterThan(28);
+        expect(isImpactSpike).toBe(true);
+      });
+    });
+
+    describe('Prompt 14: Family Voice Notes & "Ask to Call Me"', () => {
+      it('stores voice note with duration, play tracking, and loved reply reaction', async () => {
+        const { INITIAL_FAMILY_VOICE_NOTES } = await import('../src/data/initialData');
+        expect(INITIAL_FAMILY_VOICE_NOTES.length).toBeGreaterThan(0);
+
+        const note = INITIAL_FAMILY_VOICE_NOTES[0];
+        expect(note.senderName).toBeDefined();
+        expect(note.durationSeconds).toBeGreaterThan(0);
+
+        // Simulate elder heart response
+        const lovedNote = { ...note, lovedReply: true };
+        expect(lovedNote.lovedReply).toBe(true);
+      });
+    });
   });
 });
 

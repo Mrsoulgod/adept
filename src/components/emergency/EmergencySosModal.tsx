@@ -154,3 +154,4 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
     </div>
   );
 };
+

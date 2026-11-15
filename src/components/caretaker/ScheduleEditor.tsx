@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAdept } from '../../context/AdeptContext';
-import type { Medication, MealAnchor, EditSource } from '../../lib/types';
+import type { Medication, MealAnchor, EditSource, MedicineSafetyReport } from '../../lib/types';
 import { MEAL_ANCHORS, EDIT_SOURCE_LABELS } from '../../lib/types';
-import { Clock, X, Package, Tag } from 'lucide-react';
+import { Clock, X, Package, Tag, Loader2 } from 'lucide-react';
+import { runMedicineSafetyCheck } from '../../lib/geminiAiService';
+import { MedicineSafetyCard } from '../safety/MedicineSafetyCard';
 
 interface ScheduleEditorProps {
   onClose: () => void;
@@ -10,7 +12,7 @@ interface ScheduleEditorProps {
 }
 
 export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ onClose, editingMed }) => {
-  const { addOrUpdateMedication, activeElderId } = useAdept();
+  const { addOrUpdateMedication, activeElderId, activeElder, medications, recordSafetyReport } = useAdept();
 
   const [name, setName] = useState(editingMed?.name || '');
   const [friendlyName, setFriendlyName] = useState(editingMed?.friendlyName || '');
@@ -40,7 +42,12 @@ export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ onClose, editing
     editingMed?.dailyDoseUnits || 1
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Prompt 11: Medicine Safety Check State
+  const [isCheckingSafety, setIsCheckingSafety] = useState(false);
+  const [safetyReport, setSafetyReport] = useState<MedicineSafetyReport | null>(null);
+  const [pendingMed, setPendingMed] = useState<Medication | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !friendlyName) return;
 
@@ -58,12 +65,36 @@ export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ onClose, editing
       shapeDescription,
       color,
       purpose: purpose || 'Prescribed daily wellness support',
-      prescribedBy: 'Dr. Evelyn Vance',
+      prescribedBy: activeElder.doctorName || 'Dr. Evelyn Vance',
       isActive: true,
       createdAt: editingMed?.createdAt || new Date().toISOString(),
     };
 
-    addOrUpdateMedication(med, source, 'Rahul (Caretaker)');
+    setPendingMed(med);
+    setIsCheckingSafety(true);
+
+    try {
+      const report = await runMedicineSafetyCheck(
+        med,
+        medications,
+        activeElder.allergies || ['Penicillin']
+      );
+      setSafetyReport(report);
+    } catch {
+      // Fallback: save directly if safety check encounters network issue
+      addOrUpdateMedication(med, source, 'Sarah Davies (Caretaker)');
+      onClose();
+    } finally {
+      setIsCheckingSafety(false);
+    }
+  };
+
+  const handleSafetyApproved = () => {
+    if (!pendingMed) return;
+    if (safetyReport) {
+      recordSafetyReport(safetyReport);
+    }
+    addOrUpdateMedication(pendingMed, source, 'Sarah Davies (Caretaker)');
     onClose();
   };
 
@@ -90,7 +121,20 @@ export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ onClose, editing
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Prompt 11: Safety Review Proposal Card */}
+        {safetyReport && pendingMed ? (
+          <div className="space-y-4 animate-in fade-in">
+            <div className="text-sm font-bold text-slate-700">
+              Please review the AI Safety Evaluation before applying changes:
+            </div>
+            <MedicineSafetyCard
+              report={safetyReport}
+              onApprove={handleSafetyApproved}
+              onCancel={() => setSafetyReport(null)}
+            />
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
           {/* MANDATORY SOURCE SELECTOR */}
           <div className="bg-amber-50/80 border border-amber-300 rounded-2xl p-4 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-950">
@@ -287,12 +331,21 @@ export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ onClose, editing
             </button>
             <button
               type="submit"
-              className="px-6 py-3 rounded-xl bg-[#064e3b] hover:bg-[#043d2e] text-white font-bold text-sm cursor-pointer shadow-md transition-all active:scale-98"
+              disabled={isCheckingSafety}
+              className="px-6 py-3 rounded-xl bg-[#064e3b] hover:bg-[#043d2e] text-white font-bold text-sm cursor-pointer shadow-md transition-all active:scale-98 flex items-center gap-2"
             >
-              Save Schedule with Source
+              {isCheckingSafety ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-200" />
+                  <span>Checking Safety with Gemini...</span>
+                </>
+              ) : (
+                <span>Check Safety & Save</span>
+              )}
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

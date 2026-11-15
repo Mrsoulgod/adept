@@ -333,3 +333,168 @@ export interface DoctorBrief {
   safetyNote?: string;
 }
 
+// ---------------------------------------------------------------------
+// PROMPT 7: DATA SPINE (Single Source of Truth Events & Views)
+// ---------------------------------------------------------------------
+export type EventType =
+  | 'dose_taken'
+  | 'dose_skipped'
+  | 'dose_missed'
+  | 'med_added'
+  | 'med_changed'
+  | 'med_removed'
+  | 'vital_logged'
+  | 'checkin'
+  | 'sos_triggered'
+  | 'sos_claimed'
+  | 'sos_escalated'
+  | 'sos_resolved'
+  | 'note'
+  | 'ai_question'
+  | 'safety_checked';
+
+export interface AdeptEvent {
+  id: string;
+  circleId: string;
+  actorId?: string;
+  actorRole: Role | 'system' | 'ai';
+  type: EventType;
+  payload: Record<string, any>;
+  source: string;
+  createdAt: string;
+}
+
+// Dynamic Computed Views from the Event Spine
+export interface StockRemainingView {
+  medicationId: string;
+  friendlyName: string;
+  stockRemaining: number;
+}
+
+export interface DaysOfSupplyView {
+  medicationId: string;
+  friendlyName: string;
+  daysOfSupply: number;
+}
+
+export interface AdherenceSummaryView {
+  elderId: string;
+  adherence7d: number;
+  adherence30d: number;
+  taken7d: number;
+  scheduled7d: number;
+  taken30d: number;
+  scheduled30d: number;
+}
+
+export interface UsualDoseTimeView {
+  medicationId: string;
+  usualTimeString: string;
+  usualTimeMinuteOfDay: number;
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 9: VITALS LOG
+// ---------------------------------------------------------------------
+export type VitalType = 'bp' | 'sugar' | 'weight' | 'pulse';
+
+export interface VitalRecord {
+  id: string;
+  elderId: string;
+  type: VitalType;
+  systolic?: number;
+  diastolic?: number;
+  bloodSugar?: number; // mg/dL
+  weightKg?: number;
+  pulseBpm?: number;
+  context?: 'fasting' | 'post_meal' | 'resting' | 'active';
+  rangeFlag?: 'normal' | 'low' | 'high' | 'steady';
+  rangeFlagLabel?: string;
+  notes?: string;
+  loggedBy: Role | 'elder' | 'caretaker' | 'family';
+  loggedAt: string;
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 11: MEDICINE SAFETY CHECK
+// ---------------------------------------------------------------------
+export type SafetySeverity = 'info' | 'caution' | 'ask_doctor';
+
+export interface MedicineSafetyReport {
+  id: string;
+  medicationName: string;
+  dosage: string;
+  severity: SafetySeverity;
+  reason: string;
+  confidence: number;
+  checkedAt: string;
+  disclaimer: string;
+  suggestedAction?: string;
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 12 & 13: SOS WITH ESCALATION & INCIDENTS
+// ---------------------------------------------------------------------
+export type IncidentStatus = 'open' | 'claimed' | 'escalated' | 'resolved';
+
+export interface IncidentTimelineItem {
+  timestamp: string;
+  title: string;
+  actor: string;
+  description: string;
+}
+
+export interface IncidentRecord {
+  id: string;
+  circleId: string;
+  elderId: string;
+  elderName: string;
+  status: IncidentStatus;
+  triggeredAt: string;
+  claimedAt?: string;
+  claimedBy?: string;
+  claimedByRole?: Role;
+  escalatedAt?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    mapsUrl?: string;
+  };
+  vitalSnapshot?: VitalRecord;
+  timeline: IncidentTimelineItem[];
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 14: FAMILY VOICE NOTE & CALL ME
+// ---------------------------------------------------------------------
+export interface FamilyVoiceNote {
+  id: string;
+  circleId: string;
+  senderName: string;
+  senderRole: Role;
+  audioUrl?: string; // base64 or blob URL
+  durationSeconds: number;
+  recordedAt: string;
+  hasBeenPlayed: boolean;
+  playedAt?: string;
+  lovedReply: boolean;
+  lovedAt?: string;
+}
+
+// ---------------------------------------------------------------------
+// PROMPT 8: ADEPT AI FUNCTION CALLING
+// ---------------------------------------------------------------------
+export interface AdeptAiMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  sources?: string[];
+  followUpChips?: string[];
+  isEmergency?: boolean;
+  timestamp: string;
+}
+
+

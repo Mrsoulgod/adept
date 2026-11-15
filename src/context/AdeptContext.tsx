@@ -13,6 +13,11 @@ import type {
   ElderDeviceRecord,
   ChatMessage,
   EmergencyAlert,
+  AdeptEvent,
+  VitalRecord,
+  MedicineSafetyReport,
+  IncidentRecord,
+  FamilyVoiceNote,
 } from '../lib/types';
 import { MEAL_ANCHORS, EDIT_SOURCE_LABELS } from '../lib/types';
 import {
@@ -23,6 +28,9 @@ import {
   getInitialDoseLogs,
   INITIAL_AI_PROPOSALS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_VITALS,
+  INITIAL_FAMILY_VOICE_NOTES,
+  getInitialEvents,
 } from '../data/initialData';
 import { loadStoredState, saveStoredState } from '../lib/supabase';
 import {
@@ -184,6 +192,44 @@ interface AdeptContextType {
   emergencyAlert: EmergencyAlert | null;
   triggerEmergencySOS: (elderId?: string, reason?: string) => void;
   resolveEmergencyAlert: (alertId: string) => void;
+
+  // Prompt 7: Data Spine (Single Source of Truth)
+  events: AdeptEvent[];
+  recordEvent: (eventData: Omit<AdeptEvent, 'id' | 'createdAt'>) => AdeptEvent;
+  getStockRemaining: (medicationId: string) => number;
+  getDaysOfSupply: (medicationId: string) => number;
+  getAdherence7d: (elderId?: string) => number;
+  getAdherence30d: (elderId?: string) => number;
+  getUsualDoseTime: (medicationId: string) => { timeString: string; minuteOfDay: number };
+
+  // Prompt 9: Vitals
+  vitals: VitalRecord[];
+  recordVital: (vital: Omit<VitalRecord, 'id' | 'loggedAt'>) => VitalRecord;
+
+  // Prompt 11: Medicine Safety Check
+  safetyReports: MedicineSafetyReport[];
+  recordSafetyReport: (report: Omit<MedicineSafetyReport, 'id' | 'checkedAt'>) => MedicineSafetyReport;
+
+  // Prompt 12: SOS with Escalation
+  activeIncident: IncidentRecord | null;
+  triggerSosWithEscalation: (elderId: string, location?: { latitude: number; longitude: number; mapsUrl?: string }) => Promise<IncidentRecord>;
+  claimIncident: (incidentId: string, claimedBy: string, role: Role) => void;
+  escalateIncident: (incidentId: string) => void;
+  resolveIncident: (incidentId: string, resolvedBy: string) => void;
+
+  // Prompt 14: Family Voice Notes & Call Request
+  familyVoiceNotes: FamilyVoiceNote[];
+  addFamilyVoiceNote: (senderName: string, senderRole: Role, durationSeconds: number, audioUrl?: string) => FamilyVoiceNote;
+  markVoiceNotePlayed: (noteId: string) => void;
+  loveVoiceNote: (noteId: string) => void;
+  requestFamilyCall: (targetName: string, elderName: string) => void;
+
+  // Prompt 8 & 10: Adept AI Sheet Controls
+  isAdeptSheetOpen: boolean;
+  openAdeptSheet: (initialContext?: { med?: Medication; question?: string }) => void;
+  closeAdeptSheet: () => void;
+  adeptContextMed: Medication | null;
+  adeptInitialQuestion: string;
 }
 
 const AdeptContext = createContext<AdeptContextType | undefined>(undefined);
@@ -287,6 +333,50 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [settings, setSettings] = useState(initialData.settings || {});
   const [lastEmailDispatch, setLastEmailDispatch] = useState<EmailDispatchResult | null>(null);
 
+  // Prompt 7: Append-Only Events Data Spine (Single Source of Truth)
+  const [events, setEvents] = useState<AdeptEvent[]>(() => {
+    try {
+      const stored = localStorage.getItem('adept_events_spine_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return getInitialEvents();
+  });
+
+  // Prompt 9: Vitals Records
+  const [vitals, setVitals] = useState<VitalRecord[]>(() => {
+    try {
+      const stored = localStorage.getItem('adept_vitals_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return INITIAL_VITALS;
+  });
+
+  // Prompt 11: Medicine Safety Reports
+  const [safetyReports, setSafetyReports] = useState<MedicineSafetyReport[]>([]);
+
+  // Prompt 12: SOS Incidents with Escalation
+  const [activeIncident, setActiveIncident] = useState<IncidentRecord | null>(() => {
+    try {
+      const stored = localStorage.getItem('adept_active_incident_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return null;
+  });
+
+  // Prompt 14: Family Voice Notes
+  const [familyVoiceNotes, setFamilyVoiceNotes] = useState<FamilyVoiceNote[]>(() => {
+    try {
+      const stored = localStorage.getItem('adept_voice_notes_v1');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return INITIAL_FAMILY_VOICE_NOTES;
+  });
+
+  // Prompt 8 & 10: Adept AI Sheet State
+  const [isAdeptSheetOpen, setIsAdeptSheetOpen] = useState(false);
+  const [adeptContextMed, setAdeptContextMed] = useState<Medication | null>(null);
+  const [adeptInitialQuestion, setAdeptInitialQuestion] = useState<string>('');
+
   // Cross-tab real-time sync via BroadcastChannel & Storage Event
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
@@ -314,6 +404,18 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setEmergencyAlert(data.alert);
       } else if (data?.type === 'EMERGENCY_RESOLVED') {
         setEmergencyAlert(null);
+      } else if (data?.type === 'EVENT_RECORDED') {
+        const incoming = data.event;
+        setEvents((prev) => {
+          if (prev.some((e) => e.id === incoming.id)) return prev;
+          return [incoming, ...prev];
+        });
+      } else if (data?.type === 'INCIDENT_TRIGGERED' || data?.type === 'INCIDENT_CLAIMED' || data?.type === 'INCIDENT_ESCALATED') {
+        setActiveIncident(data.incident);
+      } else if (data?.type === 'INCIDENT_RESOLVED') {
+        setActiveIncident(null);
+      } else if (data?.type === 'VOICE_NOTE_ADDED') {
+        setFamilyVoiceNotes((prev) => [data.note, ...prev.filter((n) => n.id !== data.note.id)]);
       }
     };
 
@@ -329,6 +431,18 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (e.key === 'adept_active_emergency_alert') {
         try { setEmergencyAlert(e.newValue ? JSON.parse(e.newValue) : null); } catch {}
+      }
+      if (e.key === 'adept_events_spine_v1' && e.newValue) {
+        try { setEvents(JSON.parse(e.newValue)); } catch {}
+      }
+      if (e.key === 'adept_vitals_v1' && e.newValue) {
+        try { setVitals(JSON.parse(e.newValue)); } catch {}
+      }
+      if (e.key === 'adept_active_incident_v1') {
+        try { setActiveIncident(e.newValue ? JSON.parse(e.newValue) : null); } catch {}
+      }
+      if (e.key === 'adept_voice_notes_v1' && e.newValue) {
+        try { setFamilyVoiceNotes(JSON.parse(e.newValue)); } catch {}
       }
     };
 
@@ -402,6 +516,497 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return [item, ...prev];
     });
+  }, []);
+
+  // Prompt 7: Append-Only Event Recorder (Single Source of Truth)
+  const recordEvent = useCallback((eventData: Omit<AdeptEvent, 'id' | 'createdAt'>): AdeptEvent => {
+    const newEvent: AdeptEvent = {
+      ...eventData,
+      id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setEvents((prev) => {
+      const updated = [newEvent, ...prev];
+      try {
+        localStorage.setItem('adept_events_spine_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel('adept_pairing_sync');
+        channel.postMessage({ type: 'EVENT_RECORDED', event: newEvent });
+      }
+    } catch {}
+
+    return newEvent;
+  }, []);
+
+  // Prompt 7: SQL Views Computed from Real Data
+  const getStockRemaining = useCallback(
+    (medicationId: string): number => {
+      const med = medications.find((m) => m.id === medicationId);
+      if (!med) return 0;
+      const baseStock = med.stockCount !== undefined ? med.stockCount : 30;
+      const takenEvents = events.filter(
+        (e) => e.type === 'dose_taken' && e.payload?.medication_id === medicationId
+      ).length;
+      const refills = events
+        .filter(
+          (e) =>
+            e.type === 'med_changed' &&
+            e.payload?.medication_id === medicationId &&
+            e.payload?.refill_amount
+        )
+        .reduce((acc, curr) => acc + (Number(curr.payload.refill_amount) || 0), 0);
+      return Math.max(0, baseStock - takenEvents + refills);
+    },
+    [medications, events]
+  );
+
+  const getDaysOfSupply = useCallback(
+    (medicationId: string): number => {
+      const stock = getStockRemaining(medicationId);
+      const med = medications.find((m) => m.id === medicationId);
+      const dailyRate = med?.dailyDoseUnits || 1;
+      return Math.max(0, Math.round((stock / dailyRate) * 10) / 10);
+    },
+    [getStockRemaining, medications]
+  );
+
+  const getAdherence7d = useCallback(
+    (elderId?: string): number => {
+      const targetId = elderId || activeElderId;
+      const targetMeds = medications.filter((m) =>
+        m.elderId ? m.elderId === targetId : targetId === 'elder-dad'
+      );
+      const medIds = new Set(targetMeds.map((m) => m.id));
+      const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+      const circleEvents = events.filter(
+        (e) => e.createdAt >= cutoff && medIds.has(e.payload?.medication_id)
+      );
+      const taken = circleEvents.filter((e) => e.type === 'dose_taken').length;
+      const scheduled = Math.max(
+        1,
+        circleEvents.filter((e) => ['dose_taken', 'dose_skipped', 'dose_missed'].includes(e.type)).length
+      );
+      return Math.min(100, Math.round((taken / scheduled) * 100));
+    },
+    [activeElderId, medications, events]
+  );
+
+  const getAdherence30d = useCallback(
+    (elderId?: string): number => {
+      const targetId = elderId || activeElderId;
+      const targetMeds = medications.filter((m) =>
+        m.elderId ? m.elderId === targetId : targetId === 'elder-dad'
+      );
+      const medIds = new Set(targetMeds.map((m) => m.id));
+      const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+      const circleEvents = events.filter(
+        (e) => e.createdAt >= cutoff && medIds.has(e.payload?.medication_id)
+      );
+      const taken = circleEvents.filter((e) => e.type === 'dose_taken').length;
+      const scheduled = Math.max(
+        1,
+        circleEvents.filter((e) => ['dose_taken', 'dose_skipped', 'dose_missed'].includes(e.type)).length
+      );
+      return Math.min(100, Math.round((taken / scheduled) * 100));
+    },
+    [activeElderId, medications, events]
+  );
+
+  const getUsualDoseTime = useCallback(
+    (medicationId: string): { timeString: string; minuteOfDay: number } => {
+      const doseEvents = events.filter(
+        (e) => e.type === 'dose_taken' && e.payload?.medication_id === medicationId
+      );
+      if (doseEvents.length === 0) return { timeString: '8:25 AM', minuteOfDay: 505 };
+      const totalMinutes = doseEvents.reduce((acc, ev) => {
+        const d = new Date(ev.createdAt);
+        return acc + (d.getHours() * 60 + d.getMinutes());
+      }, 0);
+      const avgMin = Math.round(totalMinutes / doseEvents.length);
+      const hrs = Math.floor(avgMin / 60) % 24;
+      const mins = avgMin % 60;
+      const ampm = hrs >= 12 ? 'PM' : 'AM';
+      const displayHrs = hrs % 12 || 12;
+      return {
+        timeString: `${displayHrs}:${mins.toString().padStart(2, '0')} ${ampm}`,
+        minuteOfDay: avgMin,
+      };
+    },
+    [events]
+  );
+
+  // Prompt 9: Vitals Recording
+  const recordVital = useCallback(
+    (vitalData: Omit<VitalRecord, 'id' | 'loggedAt'>): VitalRecord => {
+      const newRecord: VitalRecord = {
+        ...vitalData,
+        id: `vital-${Date.now()}`,
+        loggedAt: new Date().toISOString(),
+      };
+
+      setVitals((prev) => {
+        const updated = [newRecord, ...prev];
+        try {
+          localStorage.setItem('adept_vitals_v1', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      recordEvent({
+        circleId: activeElderId,
+        actorRole: vitalData.loggedBy,
+        type: 'vital_logged',
+        payload: {
+          vital_id: newRecord.id,
+          type: newRecord.type,
+          systolic: newRecord.systolic,
+          diastolic: newRecord.diastolic,
+          blood_sugar: newRecord.bloodSugar,
+          weight_kg: newRecord.weightKg,
+          pulse_bpm: newRecord.pulseBpm,
+          context: newRecord.context,
+          range_flag: newRecord.rangeFlag,
+          range_flag_label: newRecord.rangeFlagLabel,
+        },
+        source: 'vital_pad',
+      });
+
+      return newRecord;
+    },
+    [activeElderId, recordEvent]
+  );
+
+  // Prompt 11: Medicine Safety Check Recording
+  const recordSafetyReport = useCallback(
+    (report: Omit<MedicineSafetyReport, 'id' | 'checkedAt'>): MedicineSafetyReport => {
+      const newReport: MedicineSafetyReport = {
+        ...report,
+        id: `safety-${Date.now()}`,
+        checkedAt: new Date().toISOString(),
+      };
+      setSafetyReports((prev) => [newReport, ...prev]);
+
+      recordEvent({
+        circleId: activeElderId,
+        actorRole: 'system',
+        type: 'safety_checked',
+        payload: {
+          medication_name: newReport.medicationName,
+          dosage: newReport.dosage,
+          severity: newReport.severity,
+          reason: newReport.reason,
+          confidence: newReport.confidence,
+        },
+        source: 'gemini_safety_check',
+      });
+
+      return newReport;
+    },
+    [activeElderId, recordEvent]
+  );
+
+  // Prompt 12: SOS Incidents with Escalation
+  const triggerSosWithEscalation = useCallback(
+    async (
+      elderId: string,
+      location?: { latitude: number; longitude: number; mapsUrl?: string }
+    ): Promise<IncidentRecord> => {
+      const targetElder = elders.find((e) => e.id === elderId) || activeElder;
+      const newIncident: IncidentRecord = {
+        id: `inc-${Date.now()}`,
+        circleId: 'circle-1',
+        elderId: targetElder.id,
+        elderName: targetElder.name,
+        status: 'open',
+        triggeredAt: new Date().toISOString(),
+        location: location || {
+          latitude: 51.3811,
+          longitude: -2.359,
+          mapsUrl: 'https://maps.google.com/?q=51.3811,-2.3590',
+        },
+        vitalSnapshot: vitals[0],
+        timeline: [
+          {
+            timestamp: 'Just now',
+            title: 'SOS Emergency Alert Triggered',
+            actor: targetElder.name,
+            description: `${targetElder.name} activated Emergency SOS. Escalation countdown started. Circle notified.`,
+          },
+        ],
+      };
+
+      setActiveIncident(newIncident);
+      try {
+        localStorage.setItem('adept_active_incident_v1', JSON.stringify(newIncident));
+      } catch {}
+
+      recordEvent({
+        circleId: targetElder.id,
+        actorRole: 'elder',
+        type: 'sos_triggered',
+        payload: { incident_id: newIncident.id, location: newIncident.location },
+        source: 'elder_sos_hold',
+      });
+
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('adept_pairing_sync');
+          channel.postMessage({ type: 'INCIDENT_TRIGGERED', incident: newIncident });
+        }
+      } catch {}
+
+      return newIncident;
+    },
+    [elders, activeElder, vitals, recordEvent]
+  );
+
+  const claimIncident = useCallback(
+    (incidentId: string, claimedBy: string, claimRole: Role) => {
+      setActiveIncident((prev) => {
+        if (!prev || prev.id !== incidentId) return prev;
+        const updated: IncidentRecord = {
+          ...prev,
+          status: 'claimed',
+          claimedAt: new Date().toISOString(),
+          claimedBy,
+          claimedByRole: claimRole,
+          timeline: [
+            {
+              timestamp: 'Just now',
+              title: 'Incident Claimed',
+              actor: claimedBy,
+              description: `${claimedBy} locked the incident and is attending to ${prev.elderName.split(' ')[0]}.`,
+            },
+            ...prev.timeline,
+          ],
+        };
+        try {
+          localStorage.setItem('adept_active_incident_v1', JSON.stringify(updated));
+        } catch {}
+
+        recordEvent({
+          circleId: prev.elderId,
+          actorRole: claimRole,
+          type: 'sos_claimed',
+          payload: { incident_id: incidentId, claimed_by: claimedBy },
+          source: 'incident_claim_button',
+        });
+
+        try {
+          if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('adept_pairing_sync');
+            channel.postMessage({ type: 'INCIDENT_CLAIMED', incident: updated });
+          }
+        } catch {}
+
+        return updated;
+      });
+    },
+    [recordEvent]
+  );
+
+  const escalateIncident = useCallback(
+    (incidentId: string) => {
+      setActiveIncident((prev) => {
+        if (!prev || prev.id !== incidentId || prev.status === 'claimed' || prev.status === 'resolved')
+          return prev;
+        const updated: IncidentRecord = {
+          ...prev,
+          status: 'escalated',
+          escalatedAt: new Date().toISOString(),
+          timeline: [
+            {
+              timestamp: 'Just now',
+              title: 'Escalated to Tier 2 (EMS 112 & Dr. Vance)',
+              actor: 'Adept Safety Guard',
+              description: 'Incident remained unclaimed after 90 seconds. Escalated to emergency services and physician.',
+            },
+            ...prev.timeline,
+          ],
+        };
+        try {
+          localStorage.setItem('adept_active_incident_v1', JSON.stringify(updated));
+        } catch {}
+
+        recordEvent({
+          circleId: prev.elderId,
+          actorRole: 'system',
+          type: 'sos_escalated',
+          payload: { incident_id: incidentId },
+          source: 'safety_countdown_90s',
+        });
+
+        try {
+          if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('adept_pairing_sync');
+            channel.postMessage({ type: 'INCIDENT_ESCALATED', incident: updated });
+          }
+        } catch {}
+
+        return updated;
+      });
+    },
+    [recordEvent]
+  );
+
+  const resolveIncident = useCallback(
+    (incidentId: string, resolvedBy: string) => {
+      setActiveIncident((prev) => {
+        if (!prev || prev.id !== incidentId) return prev;
+        const updated: IncidentRecord = {
+          ...prev,
+          status: 'resolved',
+          resolvedAt: new Date().toISOString(),
+          resolvedBy,
+          timeline: [
+            {
+              timestamp: 'Just now',
+              title: 'Incident Resolved',
+              actor: resolvedBy,
+              description: `Incident resolved by ${resolvedBy}. Elder is safe.`,
+            },
+            ...prev.timeline,
+          ],
+        };
+        try {
+          localStorage.setItem('adept_active_incident_v1', JSON.stringify(updated));
+        } catch {}
+
+        recordEvent({
+          circleId: prev.elderId,
+          actorRole: 'family',
+          type: 'sos_resolved',
+          payload: { incident_id: incidentId, resolved_by: resolvedBy },
+          source: 'resolve_button',
+        });
+
+        try {
+          if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('adept_pairing_sync');
+            channel.postMessage({ type: 'INCIDENT_RESOLVED', incident: updated });
+          }
+        } catch {}
+
+        return updated;
+      });
+    },
+    [recordEvent]
+  );
+
+  // Prompt 14: Family Voice Notes & Call Requests
+  const addFamilyVoiceNote = useCallback(
+    (senderName: string, senderRole: Role, durationSeconds: number, audioUrl?: string): FamilyVoiceNote => {
+      const newNote: FamilyVoiceNote = {
+        id: `vn-${Date.now()}`,
+        circleId: 'circle-1',
+        senderName,
+        senderRole,
+        audioUrl,
+        durationSeconds,
+        recordedAt: 'Today, Just now',
+        hasBeenPlayed: false,
+        lovedReply: false,
+      };
+      setFamilyVoiceNotes((prev) => {
+        const updated = [newNote, ...prev];
+        try {
+          localStorage.setItem('adept_voice_notes_v1', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      recordEvent({
+        circleId: activeElderId,
+        actorRole: senderRole,
+        type: 'note',
+        payload: { voice_note_id: newNote.id, sender: senderName, duration: durationSeconds },
+        source: 'family_voice_recorder',
+      });
+
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('adept_pairing_sync');
+          channel.postMessage({ type: 'VOICE_NOTE_ADDED', note: newNote });
+        }
+      } catch {}
+
+      return newNote;
+    },
+    [activeElderId, recordEvent]
+  );
+
+  const markVoiceNotePlayed = useCallback((noteId: string) => {
+    setFamilyVoiceNotes((prev) => {
+      const updated = prev.map((n) =>
+        n.id === noteId ? { ...n, hasBeenPlayed: true, playedAt: new Date().toISOString() } : n
+      );
+      try {
+        localStorage.setItem('adept_voice_notes_v1', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
+  const loveVoiceNote = useCallback(
+    (noteId: string) => {
+      setFamilyVoiceNotes((prev) => {
+        const updated = prev.map((n) =>
+          n.id === noteId ? { ...n, lovedReply: true, lovedAt: new Date().toISOString() } : n
+        );
+        try {
+          localStorage.setItem('adept_voice_notes_v1', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+      recordEvent({
+        circleId: activeElderId,
+        actorRole: 'elder',
+        type: 'note',
+        payload: { voice_note_id: noteId, reaction: 'loved_heart' },
+        source: 'elder_heart_reaction',
+      });
+    },
+    [activeElderId, recordEvent]
+  );
+
+  const requestFamilyCall = useCallback(
+    (targetName: string, elderName: string) => {
+      recordEvent({
+        circleId: activeElderId,
+        actorRole: 'elder',
+        type: 'note',
+        payload: {
+          call_request: true,
+          targetName,
+          message: `${elderName} asked for a call from ${targetName}.`,
+        },
+        source: 'elder_call_me_button',
+      });
+      alert(`Call request sent to ${targetName}! They will phone ${elderName} shortly.`);
+    },
+    [activeElderId, recordEvent]
+  );
+
+  // Prompt 8 & 10: Adept AI Sheet Handlers
+  const openAdeptSheet = useCallback(
+    (initialContext?: { med?: Medication; question?: string }) => {
+      setAdeptContextMed(initialContext?.med || null);
+      setAdeptInitialQuestion(initialContext?.question || '');
+      setIsAdeptSheetOpen(true);
+    },
+    []
+  );
+
+  const closeAdeptSheet = useCallback(() => {
+    setIsAdeptSheetOpen(false);
+    setAdeptContextMed(null);
+    setAdeptInitialQuestion('');
   }, []);
 
   // Sync state changes to storage
@@ -919,6 +1524,19 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setDoseLogs((prev) => [newLog, ...prev]);
 
+    recordEvent({
+      circleId: med.elderId || activeElderId,
+      actorRole: 'elder',
+      type: 'dose_taken',
+      payload: {
+        medication_id: med.id,
+        medication_name: med.friendlyName,
+        meal_anchor: med.mealAnchor,
+        notes: notes || 'Confirmed with meal',
+      },
+      source: 'elder_app',
+    });
+
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
@@ -951,6 +1569,20 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     setDoseLogs((prev) => [newLog, ...prev]);
+
+    recordEvent({
+      circleId: med.elderId || activeElderId,
+      actorRole: 'elder',
+      type: 'dose_skipped',
+      payload: {
+        medication_id: med.id,
+        medication_name: med.friendlyName,
+        meal_anchor: med.mealAnchor,
+        reason: 'defer_rest',
+        notes: note || 'Arthur chose to rest first. Sarah notified gently.',
+      },
+      source: 'elder_app',
+    });
 
     recordAuditEntry({
       id: `audit-${Date.now()}`,
@@ -985,6 +1617,19 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setDoseLogs((prev) => [newLog, ...prev]);
 
+    recordEvent({
+      circleId: med.elderId || activeElderId,
+      actorRole: 'elder',
+      type: 'dose_skipped',
+      payload: {
+        medication_id: med.id,
+        medication_name: med.friendlyName,
+        meal_anchor: med.mealAnchor,
+        reason: reason || 'Resting comfortably today.',
+      },
+      source: 'elder_app',
+    });
+
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
@@ -1002,6 +1647,17 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     wellnessScore: 'great' | 'steady' | 'tired' | 'discomfort',
     notes?: string
   ) => {
+    recordEvent({
+      circleId: activeElderId,
+      actorRole: 'elder',
+      type: 'checkin',
+      payload: {
+        wellness_score: wellnessScore,
+        notes: notes || '',
+      },
+      source: 'elder_app',
+    });
+
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'elder',
@@ -1230,6 +1886,22 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ? `${actor} changed dose of ${completeMed.friendlyName} to ${completeMed.dosage}, source: ${sourceLabel}.`
       : `${actor} added ${completeMed.friendlyName} (${completeMed.dosage}), source: ${sourceLabel}.`;
 
+    recordEvent({
+      circleId: completeMed.elderId || activeElderId,
+      actorRole: 'caretaker',
+      type: isEdit ? 'med_changed' : 'med_added',
+      payload: {
+        medication_id: completeMed.id,
+        medication_name: completeMed.name,
+        friendly_name: completeMed.friendlyName,
+        dosage: completeMed.dosage,
+        meal_anchor: completeMed.mealAnchor,
+        stock_count: completeMed.stockCount,
+        daily_units: completeMed.dailyDoseUnits,
+      },
+      source: editSource,
+    });
+
     recordAuditEntry({
       id: `audit-${Date.now()}`,
       actorRole: 'caretaker',
@@ -1271,6 +1943,19 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return m;
       })
     );
+
+    recordEvent({
+      circleId: med.elderId || activeElderId,
+      actorRole: 'caretaker',
+      type: 'med_changed',
+      payload: {
+        medication_id: med.id,
+        medication_name: med.friendlyName,
+        refill_amount: amount,
+        new_stock_count: (med.stockCount || 0) + amount,
+      },
+      source: 'prescription_photo',
+    });
 
     recordAuditEntry({
       id: `audit-${Date.now()}`,
@@ -1384,9 +2069,18 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAiProposals(INITIAL_AI_PROPOSALS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
     setMembers(getStoredMembersList());
+    setEvents(getInitialEvents());
+    setVitals(INITIAL_VITALS);
+    setSafetyReports([]);
+    setActiveIncident(null);
+    setFamilyVoiceNotes(INITIAL_FAMILY_VOICE_NOTES);
     localStorage.removeItem('adept_elders_list_v1');
     localStorage.removeItem('adept_active_elder_id');
     localStorage.removeItem('adept_platform_data_v1');
+    localStorage.removeItem('adept_events_spine_v1');
+    localStorage.removeItem('adept_vitals_v1');
+    localStorage.removeItem('adept_active_incident_v1');
+    localStorage.removeItem('adept_voice_notes_v1');
     localStorage.removeItem('adept_pin_lockout_caretaker');
     localStorage.removeItem('adept_onboarding_completed');
     localStorage.removeItem('adept_wizard_step');
@@ -1470,6 +2164,38 @@ export const AdeptProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         emergencyAlert,
         triggerEmergencySOS,
         resolveEmergencyAlert,
+        // Prompt 7 Data Spine
+        events,
+        recordEvent,
+        getStockRemaining,
+        getDaysOfSupply,
+        getAdherence7d,
+        getAdherence30d,
+        getUsualDoseTime,
+        // Prompt 9 Vitals
+        vitals,
+        recordVital,
+        // Prompt 11 Medicine Safety Check
+        safetyReports,
+        recordSafetyReport,
+        // Prompt 12 SOS with Escalation
+        activeIncident,
+        triggerSosWithEscalation,
+        claimIncident,
+        escalateIncident,
+        resolveIncident,
+        // Prompt 14 Family Voice Notes & Call Request
+        familyVoiceNotes,
+        addFamilyVoiceNote,
+        markVoiceNotePlayed,
+        loveVoiceNote,
+        requestFamilyCall,
+        // Prompt 8 & 10 Adept AI Sheet Controls
+        isAdeptSheetOpen,
+        openAdeptSheet,
+        closeAdeptSheet,
+        adeptContextMed,
+        adeptInitialQuestion,
       }}
     >
       {children}

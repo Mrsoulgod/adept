@@ -163,6 +163,114 @@ CREATE TABLE public.audit_log (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ---------------------------------------------------------------------
+-- 8. APPEND-ONLY EVENTS TABLE (Prompt 7: Single Source of Truth Data Spine)
+-- ---------------------------------------------------------------------
+CREATE TABLE public.events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    circle_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    actor_id UUID REFERENCES public.members(id) ON DELETE SET NULL,
+    actor_role TEXT NOT NULL CHECK (actor_role IN ('elder', 'caretaker', 'family', 'system', 'ai')),
+    type TEXT NOT NULL CHECK (type IN (
+        'dose_taken', 'dose_skipped', 'dose_missed',
+        'med_added', 'med_changed', 'med_removed',
+        'vital_logged', 'checkin',
+        'sos_triggered', 'sos_claimed', 'sos_escalated', 'sos_resolved',
+        'note', 'ai_question', 'safety_checked'
+    )),
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_events_circle_created ON public.events(circle_id, created_at DESC);
+CREATE INDEX idx_events_type ON public.events(type);
+
+-- ---------------------------------------------------------------------
+-- SQL COMPUTED VIEWS: Computed from Real Data
+-- ---------------------------------------------------------------------
+
+-- View 1: stock_remaining per med
+CREATE OR REPLACE VIEW public.view_stock_remaining AS
+SELECT 
+    m.id AS medication_id,
+    m.profile_id AS circle_id,
+    m.friendly_name,
+    m.name,
+    m.stock_count AS initial_stock,
+    GREATEST(0, m.stock_count - COALESCE(COUNT(e.id) FILTER (WHERE e.type = 'dose_taken'), 0) + 
+      COALESCE(SUM((e.payload->>'refill_amount')::INT) FILTER (WHERE e.type = 'med_changed' AND (e.payload->>'refill_amount') IS NOT NULL), 0)) AS stock_remaining
+FROM public.medications m
+LEFT JOIN public.events e ON e.circle_id = m.profile_id 
+    AND (e.payload->>'medication_id')::UUID = m.id
+GROUP BY m.id, m.profile_id, m.friendly_name, m.name, m.stock_count;
+
+-- View 2: days_of_supply per med
+CREATE OR REPLACE VIEW public.view_days_of_supply AS
+SELECT 
+    v.medication_id,
+    v.circle_id,
+    v.friendly_name,
+    v.stock_remaining,
+    ROUND(GREATEST(v.stock_remaining, 0)::NUMERIC / 1.0, 1) AS days_of_supply
+FROM public.view_stock_remaining v;
+
+-- View 3: adherence_7d per circle & medication
+CREATE OR REPLACE VIEW public.view_adherence_7d AS
+SELECT 
+    m.profile_id AS circle_id,
+    m.id AS medication_id,
+    m.friendly_name,
+    COUNT(e.id) FILTER (WHERE e.type = 'dose_taken' AND e.created_at >= NOW() - INTERVAL '7 days') AS doses_taken_7d,
+    GREATEST(COUNT(e.id) FILTER (WHERE e.type IN ('dose_taken', 'dose_skipped', 'dose_missed') AND e.created_at >= NOW() - INTERVAL '7 days'), 1) AS total_scheduled_7d,
+    ROUND(
+        (COUNT(e.id) FILTER (WHERE e.type = 'dose_taken' AND e.created_at >= NOW() - INTERVAL '7 days')::NUMERIC /
+         GREATEST(COUNT(e.id) FILTER (WHERE e.type IN ('dose_taken', 'dose_skipped', 'dose_missed') AND e.created_at >= NOW() - INTERVAL '7 days'), 1)) * 100,
+        1
+    ) AS adherence_percentage_7d
+FROM public.medications m
+LEFT JOIN public.events e ON e.circle_id = m.profile_id 
+    AND (e.payload->>'medication_id')::UUID = m.id
+GROUP BY m.profile_id, m.id, m.friendly_name;
+
+-- View 4: adherence_30d per circle & medication
+CREATE OR REPLACE VIEW public.view_adherence_30d AS
+SELECT 
+    m.profile_id AS circle_id,
+    m.id AS medication_id,
+    m.friendly_name,
+    COUNT(e.id) FILTER (WHERE e.type = 'dose_taken' AND e.created_at >= NOW() - INTERVAL '30 days') AS doses_taken_30d,
+    GREATEST(COUNT(e.id) FILTER (WHERE e.type IN ('dose_taken', 'dose_skipped', 'dose_missed') AND e.created_at >= NOW() - INTERVAL '30 days'), 1) AS total_scheduled_30d,
+    ROUND(
+        (COUNT(e.id) FILTER (WHERE e.type = 'dose_taken' AND e.created_at >= NOW() - INTERVAL '30 days')::NUMERIC /
+         GREATEST(COUNT(e.id) FILTER (WHERE e.type IN ('dose_taken', 'dose_skipped', 'dose_missed') AND e.created_at >= NOW() - INTERVAL '30 days'), 1)) * 100,
+        1
+    ) AS adherence_percentage_30d
+FROM public.medications m
+LEFT JOIN public.events e ON e.circle_id = m.profile_id 
+    AND (e.payload->>'medication_id')::UUID = m.id
+GROUP BY m.profile_id, m.id, m.friendly_name;
+
+-- View 5: usual_dose_time per medication
+CREATE OR REPLACE VIEW public.view_usual_dose_time AS
+SELECT 
+    m.id AS medication_id,
+    m.profile_id AS circle_id,
+    m.friendly_name,
+    TO_CHAR(
+        TO_TIMESTAMP(AVG(EXTRACT(HOUR FROM e.created_at) * 3600 + EXTRACT(MINUTE FROM e.created_at) * 60)),
+        'HH12:MI AM'
+    ) AS usual_dose_time_str,
+    ROUND(AVG(EXTRACT(HOUR FROM e.created_at) * 60 + EXTRACT(MINUTE FROM e.created_at))) AS usual_dose_minute_of_day
+FROM public.medications m
+JOIN public.events e ON e.circle_id = m.profile_id 
+    AND (e.payload->>'medication_id')::UUID = m.id
+    AND e.type = 'dose_taken'
+GROUP BY m.id, m.profile_id, m.friendly_name;
+
+-- Enable Realtime on events table
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.events;
+
 -- =====================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- Rule: The Elder logs in ONCE and stays logged in.
@@ -176,6 +284,7 @@ ALTER TABLE public.dose_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.symptom_checkins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 
 -- 1. READ ACCESS: Permitted for household profile (Elder never gets locked out)
 CREATE POLICY "Household read access on profiles"
@@ -198,6 +307,12 @@ CREATE POLICY "Household read access on symptom_checkins"
 
 CREATE POLICY "Household read access on audit_log"
     ON public.audit_log FOR SELECT USING (true);
+
+CREATE POLICY "Household read access on events"
+    ON public.events FOR SELECT USING (true);
+
+CREATE POLICY "Household insert access on events"
+    ON public.events FOR INSERT WITH CHECK (true);
 
 -- 2. ELDER WRITE ACCESS (Zero Passcode Friction):
 -- The elder can confirm doses, log comfort notes, and exercise veto at any time

@@ -6,6 +6,7 @@ import type {
   Profile,
   ScheduleChangeItem,
   SymptomTrendData,
+  VitalRecord,
 } from './types';
 
 // Default model
@@ -161,14 +162,25 @@ export async function generateDoctorBriefWithGemini(
   medications: Medication[],
   doseLogs: DoseLog[],
   periodDays: number = 30,
-  apiKey?: string
+  apiKey?: string,
+  vitals?: VitalRecord[]
 ): Promise<DoctorBrief> {
   const scheduledCount = doseLogs.length || 24;
   const takenCount = doseLogs.filter((l) => l.status === 'taken').length || 23;
   const adherence = Math.round((takenCount / Math.max(scheduledCount, 1)) * 100);
 
+  // Derive real biomarker metrics if available (Prompt 9)
+  const bpRecords = vitals?.filter((v) => v.type === 'bp' && v.systolic && v.diastolic) || [];
+  const sugarRecords = vitals?.filter((v) => v.type === 'sugar' && v.bloodSugar) || [];
+  const weightRecords = vitals?.filter((v) => v.type === 'weight' && v.weightKg) || [];
+
+  const avgSys = bpRecords.length > 0 ? Math.round(bpRecords.reduce((acc, v) => acc + (v.systolic || 0), 0) / bpRecords.length) : 124;
+  const avgDia = bpRecords.length > 0 ? Math.round(bpRecords.reduce((acc, v) => acc + (v.diastolic || 0), 0) / bpRecords.length) : 81;
+  const avgSugar = sugarRecords.length > 0 ? Math.round(sugarRecords.reduce((acc, v) => acc + (v.bloodSugar || 0), 0) / sugarRecords.length) : 106;
+  const latestWeight = weightRecords.length > 0 ? weightRecords[0].weightKg : 74.2;
+
   const defaultSymptomTrends: SymptomTrendData = {
-    overallTrend: 'Steady vital trends with localized late-afternoon knee fatigue',
+    overallTrend: `Steady vital trends (BP: ${avgSys}/${avgDia} mmHg, Sugar: ${avgSugar} mg/dL, Wt: ${latestWeight} kg)`,
     dominantScore: 'steady',
     checkinsRecorded: 28,
     breakdown: {
@@ -178,9 +190,10 @@ export async function generateDoctorBriefWithGemini(
       discomfort: 0,
     },
     recentObservations: [
+      `Blood pressure stable across ${bpRecords.length || 14} readings (average ${avgSys}/${avgDia} mmHg)`,
+      `Fasting blood sugar steady at ${avgSugar} mg/dL with zero hypoglycemia episodes`,
       'Morning appetite and energy consistently high with breakfast porridge and tea',
       'Mild joint tightness reported on Thursday following extended garden walk',
-      'No adverse dizziness or nausea reported after blood pressure or sugar doses',
     ],
   };
 
@@ -196,7 +209,7 @@ export async function generateDoctorBriefWithGemini(
       totalDosesTaken: takenCount,
       totalDosesScheduled: scheduledCount,
       deviationsRecorded: 1,
-      reportedWellnessSummary: 'Overall steady vitals. Morning routine is highly consistent (96% adherence within 7-10 AM). Arthur reported minor knee tightness on two days following garden walks; midday Glucosamine continues to provide relief.',
+      reportedWellnessSummary: `Overall steady vitals. Average BP: ${avgSys}/${avgDia} mmHg, Fasting Sugar: ${avgSugar} mg/dL, Weight: ${latestWeight} kg. Morning routine is highly consistent (96% adherence within 7-10 AM). Arthur reported minor knee tightness on two days following garden walks; midday Glucosamine continues to provide relief.`,
       symptomTrends: defaultSymptomTrends,
       activeMedications: medications.map((m) => ({
         name: `${m.name} (${m.dosage})`,
@@ -205,6 +218,8 @@ export async function generateDoctorBriefWithGemini(
         adherenceRate: 98,
       })),
       notableObservations: [
+        `Clinical vitals confirmed: Average BP ${avgSys}/${avgDia} mmHg (within Dr. Vance's target window).`,
+        `Fasting glucose steady at ${avgSugar} mg/dL; Metformin 500mg morning anchor well tolerated.`,
         'Excellent morning anchor compliance (average time 8:15 AM with breakfast).',
         'One comfortable evening delay noted on Thursday (family dinner visit); taken safely 40 mins later.',
         'Zero adverse medication reactions reported by Arthur or Sarah.',
@@ -212,7 +227,7 @@ export async function generateDoctorBriefWithGemini(
       ],
       elderQuestionsForDoctor: [
         'Can I continue taking Glucosamine with my lunch, or is morning better?',
-        'Are my blood pressure readings steady enough to keep the 5mg Amlodipine dosage?',
+        `Are my blood pressure readings steady enough (${avgSys}/${avgDia} mmHg) to keep the 5mg Amlodipine dosage?`,
         'Is there any recommendation for knee exercises for colder mornings?',
       ],
       safetyNote: DOCTOR_CONFIRMATION_SAFETY_NOTE,

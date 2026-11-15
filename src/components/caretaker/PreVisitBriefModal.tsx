@@ -24,14 +24,14 @@ interface PreVisitBriefModalProps {
 }
 
 export const PreVisitBriefModal: React.FC<PreVisitBriefModalProps> = ({ onClose }) => {
-  const { profile, medications, doseLogs, settings } = useAdept();
+  const { profile, medications, doseLogs, settings, vitals } = useAdept();
   const [brief, setBrief] = useState<DoctorBrief | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    generateDoctorBriefWithGemini(profile, medications, doseLogs, 30, settings.geminiApiKey)
+    generateDoctorBriefWithGemini(profile, medications, doseLogs, 30, settings.geminiApiKey, vitals)
       .then((res) => {
         if (mounted) {
           setBrief(res);
@@ -46,7 +46,7 @@ export const PreVisitBriefModal: React.FC<PreVisitBriefModalProps> = ({ onClose 
     return () => {
       mounted = false;
     };
-  }, [profile, medications, doseLogs, settings.geminiApiKey]);
+  }, [profile, medications, doseLogs, settings.geminiApiKey, vitals]);
 
   const handleCopy = () => {
     if (!brief) return;

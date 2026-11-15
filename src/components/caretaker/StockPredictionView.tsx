@@ -9,11 +9,15 @@ import {
 } from 'lucide-react';
 
 export const StockPredictionView: React.FC = () => {
-  const { medications, refillMedication } = useAdept();
+  const { medications, refillMedication, getStockRemaining } = useAdept();
 
   const predictions = useMemo(() => {
-    return predictRegimenStockOuts(medications);
-  }, [medications]);
+    const liveMeds = medications.map((m) => ({
+      ...m,
+      stockCount: getStockRemaining(m.id),
+    }));
+    return predictRegimenStockOuts(liveMeds);
+  }, [medications, getStockRemaining]);
 
   const activeNudges = useMemo(() => {
     return getActiveRefillNudges(predictions);

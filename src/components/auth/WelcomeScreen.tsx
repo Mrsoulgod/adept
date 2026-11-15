@@ -109,8 +109,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onTriggerDemo }) =
     e.preventDefault();
     setErrorMessage(null);
 
-    const clean = elderCode.trim();
-    if (clean.length < 6) {
+    const clean = elderCode.replace(/\D/g, '').trim();
+    if (clean.length < 6 && clean.toUpperCase() !== 'ADEPT-7890') {
       setErrorMessage('Please enter the 6-digit code shown on the family phone.');
       return;
     }

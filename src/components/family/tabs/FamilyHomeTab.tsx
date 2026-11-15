@@ -4,6 +4,8 @@ import type { DoseLog, Medication } from '../../../lib/types';
 import { ElderSelectorBar } from '../../shared/ElderSelectorBar';
 import { ElderPairingModal } from '../ElderPairingModal';
 import { CareCircleChatModal } from '../../chat/CareCircleChatModal';
+import { FamilyVoiceRecorderModal } from '../FamilyVoiceRecorderModal';
+import { VitalsScreen } from '../../vitals/VitalsScreen';
 import {
   ShieldCheck,
   Clock,
@@ -13,6 +15,9 @@ import {
   AlertOctagon,
   PhoneCall,
   Calendar,
+  Mic,
+  Activity,
+  Sparkles,
 } from 'lucide-react';
 
 export const FamilyHomeTab: React.FC = () => {
@@ -23,10 +28,13 @@ export const FamilyHomeTab: React.FC = () => {
     medications,
     emergencyAlert,
     resolveEmergencyAlert,
+    openAdeptSheet,
   } = useAdept();
 
   const [pairingModalOpen, setPairingModalOpen] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [voiceRecorderOpen, setVoiceRecorderOpen] = useState(false);
+  const [vitalsOpen, setVitalsOpen] = useState(false);
 
   // Elder's medications
   const elderMeds = medications.filter((m: Medication) =>
@@ -198,6 +206,33 @@ export const FamilyHomeTab: React.FC = () => {
         </div>
       )}
 
+      {/* Quick Action Hub: Voice Greeting (Prompt 14), Vitals (Prompt 9), Ask Adept (Prompt 8) */}
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          onClick={() => setVoiceRecorderOpen(true)}
+          className="h-12 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-[#064e3b] rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
+        >
+          <Mic className="w-4 h-4 text-emerald-800" />
+          <span>Voice Greeting</span>
+        </button>
+
+        <button
+          onClick={() => setVitalsOpen(true)}
+          className="h-12 bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
+        >
+          <Activity className="w-4 h-4 text-[#064e3b]" />
+          <span>Vitals & BP</span>
+        </button>
+
+        <button
+          onClick={() => openAdeptSheet({ question: "How was Dad's week?" })}
+          className="h-12 bg-emerald-800 hover:bg-emerald-900 text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98 transition-all"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+          <span>Ask Adept</span>
+        </button>
+      </div>
+
       {/* ========================================================= */}
       {/* TODAY'S ROUTINE PROGRESS                                   */}
       {/* ========================================================= */}
@@ -344,6 +379,21 @@ export const FamilyHomeTab: React.FC = () => {
         onClose={() => setChatModalOpen(false)}
         defaultChannelId="group"
       />
+
+      {/* Prompt 14: Family Voice Recorder Modal */}
+      <FamilyVoiceRecorderModal
+        isOpen={voiceRecorderOpen}
+        onClose={() => setVoiceRecorderOpen(false)}
+      />
+
+      {/* Prompt 9: Vitals Screen Modal */}
+      {vitalsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 overflow-y-auto">
+          <div className="bg-[#FAF8F5] rounded-3xl max-w-md w-full max-h-[92vh] overflow-y-auto shadow-2xl p-4">
+            <VitalsScreen onClose={() => setVitalsOpen(false)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

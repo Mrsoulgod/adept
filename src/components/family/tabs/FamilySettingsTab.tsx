@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const FamilySettingsTab: React.FC = () => {
-  const { logoutUser, startWalkthroughTour } = useAdept();
+  const { logoutUser, startWalkthroughTour, elderDevices, revokeElderDevice, activeElder } = useAdept();
   const [lockoutState, setLockoutState] = useState(() => getLockoutStatus('caretaker'));
   const [pinNotice, setPinNotice] = useState<string | null>(null);
 
@@ -93,8 +93,43 @@ export const FamilySettingsTab: React.FC = () => {
           className="w-full h-12 bg-[#064e3b] hover:bg-[#043d2e] text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98 transition-all"
         >
           <QrCode className="w-4 h-4" />
-          <span>Set up Dad's Phone (Code & QR)</span>
+          <span>Set up {activeElder.relationship || "Dad"}'s Phone (Code & QR)</span>
         </button>
+
+        {/* Active Paired Hardware Devices (Prompt 4: Revoke from Settings) */}
+        {elderDevices.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <span>Paired Hardware Devices</span>
+              <span>{elderDevices.filter((d) => !d.isRevoked).length} Active</span>
+            </div>
+            {elderDevices.map((dev) => (
+              <div
+                key={dev.id}
+                className={`p-3 rounded-2xl border flex items-center justify-between text-xs ${
+                  dev.isRevoked ? 'bg-slate-100 border-slate-200 opacity-60' : 'bg-slate-50 border-slate-200 shadow-xs'
+                }`}
+              >
+                <div>
+                  <div className="font-bold text-slate-900">{dev.deviceName}</div>
+                  <div className="text-[10px] text-slate-500">
+                    {dev.isRevoked ? 'Revoked' : 'Permanently connected • Zero passwords'}
+                  </div>
+                </div>
+                {!dev.isRevoked ? (
+                  <button
+                    onClick={() => revokeElderDevice(dev.id)}
+                    className="text-red-600 hover:text-red-700 font-bold px-2.5 py-1 rounded-xl border border-red-200 hover:bg-red-50 cursor-pointer transition-colors"
+                  >
+                    Revoke
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-slate-400 font-bold">Revoked</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 2. Prompt 3: Care Team Members & Permissions (RLS) */}
