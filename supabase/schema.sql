@@ -407,3 +407,75 @@ BEGIN
         'scheduled'
     );
 END $$;
+
+-- =====================================================================
+-- SUPABASE CRON: Scheduled Reminders via Resend
+-- =====================================================================
+-- Enable pg_cron and pg_net extensions in Supabase
+-- CREATE EXTENSION IF NOT EXISTS "pg_cron";
+-- CREATE EXTENSION IF NOT EXISTS "pg_net";
+
+-- 1. Morning Breakfast Dose Reminder (7:30 AM Daily)
+-- SELECT cron.schedule(
+--     'adept-morning-breakfast-dose',
+--     '30 7 * * *',
+--     $$
+--     SELECT net.http_post(
+--         url:='https://YOUR_PROJECT_REF.supabase.co/functions/v1/schedule-reminders',
+--         headers:='{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+--         body:='{"type": "upcoming_dose", "mealAnchor": "Morning with breakfast (7:00 – 10:00 AM)"}'::jsonb
+--     );
+--     $$
+-- );
+
+-- 2. Lunch Dose Reminder (12:30 PM Daily)
+-- SELECT cron.schedule(
+--     'adept-lunch-dose',
+--     '30 12 * * *',
+--     $$
+--     SELECT net.http_post(
+--         url:='https://YOUR_PROJECT_REF.supabase.co/functions/v1/schedule-reminders',
+--         headers:='{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+--         body:='{"type": "upcoming_dose", "mealAnchor": "Midday after lunch (12:00 – 2:30 PM)"}'::jsonb
+--     );
+--     $$
+-- );
+
+-- 3. Evening Dinner Dose Reminder (6:30 PM Daily)
+-- SELECT cron.schedule(
+--     'adept-evening-dinner-dose',
+--     '30 18 * * *',
+--     $$
+--     SELECT net.http_post(
+--         url:='https://YOUR_PROJECT_REF.supabase.co/functions/v1/schedule-reminders',
+--         headers:='{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+--         body:='{"type": "upcoming_dose", "mealAnchor": "Evening with dinner (6:00 – 8:30 PM)"}'::jsonb
+--     );
+--     $$
+-- );
+
+-- 4. Gentle Missed-Window Baseline Check (Warm Amber, 10:45 AM & 3:00 PM Daily)
+-- SELECT cron.schedule(
+--     'adept-missed-window-check',
+--     '45 10 * * *',
+--     $$
+--     SELECT net.http_post(
+--         url:='https://YOUR_PROJECT_REF.supabase.co/functions/v1/schedule-reminders',
+--         headers:='{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+--         body:='{"type": "missed_dose", "mealAnchor": "Morning with breakfast"}'::jsonb
+--     );
+--     $$
+-- );
+
+-- 5. Upcoming Doctor Appointment Notice (8:00 AM Daily)
+-- SELECT cron.schedule(
+--     'adept-appointment-reminder',
+--     '0 8 * * *',
+--     $$
+--     SELECT net.http_post(
+--         url:='https://YOUR_PROJECT_REF.supabase.co/functions/v1/schedule-reminders',
+--         headers:='{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+--         body:='{"type": "appointment"}'::jsonb
+--     );
+--     $$
+-- );

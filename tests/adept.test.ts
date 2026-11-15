@@ -15,6 +15,7 @@ import {
 import {
   buildCaregiverDigestHtml,
   buildDeviationAlertHtml,
+  buildUpcomingDoseReminderHtml,
 } from '../src/lib/resend';
 
 describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
@@ -212,6 +213,37 @@ describe('Adept - Elderly Care & Medication Platform Core Guarantees', () => {
       for (const anchor of summaryMealAnchors) {
         expect(MEAL_ANCHORS[anchor as MealAnchor]).toBeDefined();
       }
+    });
+  });
+
+  describe('Supabase Edge Function: Reminders & Signed One-Tap Links via Resend', () => {
+    it('generates beautiful large-text upcoming dose email with signed Taken/Later/Skip links', () => {
+      const linkTaken = 'https://adept-care.app/functions/v1/schedule-reminders?action=taken&token=signed_1';
+      const linkLater = 'https://adept-care.app/functions/v1/schedule-reminders?action=later&token=signed_2';
+      const linkSkip = 'https://adept-care.app/functions/v1/schedule-reminders?action=skip&token=signed_3';
+
+      const emailHtml = buildUpcomingDoseReminderHtml({
+        elderName: 'Arthur Davies',
+        medicationName: 'Morning Blood Pressure Pill',
+        dosage: '5 mg',
+        mealAnchorLabel: 'Morning with breakfast (7:00 AM – 10:00 AM)',
+        instructions: '1 tablet with breakfast toast',
+        linkTaken,
+        linkLater,
+        linkSkip,
+      });
+
+      // Verify large text & quiet luxury structure
+      expect(emailHtml).toContain('Time for your morning pill, after breakfast');
+      expect(emailHtml).toContain('Morning with breakfast');
+      expect(emailHtml).toContain(linkTaken);
+      expect(emailHtml).toContain(linkLater);
+      expect(emailHtml).toContain(linkSkip);
+      expect(emailHtml).toContain('Taken • Yes, I took it');
+      expect(emailHtml).toContain('Later • Remind me in 1 hour');
+      expect(emailHtml).toContain('Skip comfortably today');
+      expect(emailHtml).toContain('#244937'); // Calm Heritage Sage
+      expect(emailHtml).toContain('24 hours'); // Expiration notice
     });
   });
 

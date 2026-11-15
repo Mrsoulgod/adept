@@ -263,3 +263,102 @@ export function buildDeviationAlertHtml(params: {
 `;
 }
 
+export function buildUpcomingDoseReminderHtml(params: {
+  elderName: string;
+  medicationName: string;
+  dosage: string;
+  mealAnchorLabel: string;
+  instructions: string;
+  linkTaken: string;
+  linkLater: string;
+  linkSkip: string;
+}): string {
+  const { elderName, medicationName, dosage, mealAnchorLabel, instructions, linkTaken, linkLater, linkSkip } = params;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Adept Medication Window Reminder</title>
+</head>
+<body style="margin: 0; padding: 24px 12px; background-color: #FAF8F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0">
+    <tr>
+      <td align="center">
+        <table width="580" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 28px; border: 2px solid #EAE5DB; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.03);">
+          
+          <!-- Forest Sage Header -->
+          <tr>
+            <td style="background-color: #244937; padding: 32px 28px; text-align: center;">
+              <span style="display: inline-block; background: rgba(255,255,255,0.2); color: #ffffff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; text-transform: uppercase;">
+                Adept Care • Human Routine Reminder
+              </span>
+              <h1 style="color: #ffffff; font-size: 28px; margin: 14px 0 4px 0; font-weight: 800;">
+                Time for your morning pill, after breakfast
+              </h1>
+              <p style="color: #EAF2EC; font-size: 18px; margin: 0;">Good morning, ${elderName}. Anchored to your meal.</p>
+            </td>
+          </tr>
+
+          <!-- Medication Details (Large Text, High Contrast) -->
+          <tr>
+            <td style="padding: 28px;">
+              <div style="background-color: #FAF8F5; border-radius: 20px; padding: 24px; border: 1px solid #EAE5DB;">
+                <span style="color: #244937; font-size: 14px; font-weight: 800; text-transform: uppercase; background: #EAF2EC; padding: 4px 12px; border-radius: 12px; display: inline-block;">
+                  ${mealAnchorLabel}
+                </span>
+                <h2 style="font-size: 24px; font-weight: 800; color: #1A1D1A; margin: 12px 0 4px 0;">
+                  ${medicationName} (${dosage})
+                </h2>
+                <p style="font-size: 18px; color: #474C46; margin: 0 0 12px 0;">
+                  Instructions: <strong>${instructions}</strong>
+                </p>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Signed 1-Tap Action Links (Taken / Later / Skip) -->
+          <tr>
+            <td style="padding: 0 28px 32px 28px;">
+              <h3 style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #70756F; margin: 0 0 16px 0; text-align: center;">
+                Tap One Button Below • No Login Needed
+              </h3>
+
+              <!-- 1. TAKEN (Giant Calm Green) -->
+              <div style="margin-bottom: 12px;">
+                <a href="${linkTaken}" style="display: block; background-color: #244937; color: #ffffff; padding: 18px 24px; font-size: 20px; font-weight: 800; text-decoration: none; border-radius: 16px; text-align: center;">
+                  ✓ Taken • Yes, I took it
+                </a>
+              </div>
+
+              <!-- 2. LATER (Warm Amber) -->
+              <div style="margin-bottom: 12px;">
+                <a href="${linkLater}" style="display: block; background-color: #FBF5EA; color: #7A4F13; border: 2px solid #EBDBC1; padding: 16px 24px; font-size: 18px; font-weight: 700; text-decoration: none; border-radius: 16px; text-align: center;">
+                  ⏳ Later • Remind me in 1 hour
+                </a>
+              </div>
+
+              <!-- 3. SKIP (Gentle Stone, Zero Shame) -->
+              <div>
+                <a href="${linkSkip}" style="display: block; background-color: #ffffff; color: #474C46; border: 2px solid #D8D1C3; padding: 14px 24px; font-size: 17px; font-weight: 700; text-decoration: none; border-radius: 16px; text-align: center;">
+                  🛌 Skip comfortably today
+                </a>
+              </div>
+
+              <p style="text-align: center; color: #70756F; font-size: 13px; margin: 18px 0 0 0;">
+                Signed links expire safely in 24 hours
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+}
+
+

@@ -10,14 +10,35 @@ import { DesignPreviewPage } from './pages/DesignPreviewPage';
 import { Palette } from 'lucide-react';
 
 const AdeptMain: React.FC = () => {
-  const { role, setDirectRole } = useAdept();
+  const { role, setDirectRole, confirmDose, deferDoseComfortably, skipDoseComfortably, medications } = useAdept();
   const [auditOpen, setAuditOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showDesignPreview, setShowDesignPreview] = useState(false);
+  const [emailActionNotice, setEmailActionNotice] = useState<string | null>(null);
 
-  // Check URL path or hash on load
+  // Check URL path, hash, or signed one-tap link query params on load
   useEffect(() => {
     const checkRoute = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const emailAction = urlParams.get('action');
+
+      if (emailAction) {
+        const medId = urlParams.get('med_id') || (medications[0]?.id || 'med-1');
+        if (emailAction === 'taken') {
+          confirmDose(medId, 'Logged via signed 1-tap email link. No login required.');
+          setEmailActionNotice('✓ Dose recorded: Taken via signed one-tap link! Zero login needed.');
+        } else if (emailAction === 'later') {
+          deferDoseComfortably(medId, 'Deferred 1 hour via email link.');
+          setEmailActionNotice('⏳ Dose deferred for 1 hour via email link.');
+        } else if (emailAction === 'skip') {
+          skipDoseComfortably(medId, 'Skipped comfortably today via email link.');
+          setEmailActionNotice('🛌 Dose comfortably skipped today via email link.');
+        }
+
+        // Clean up URL parameters cleanly without page refresh
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
       if (
         window.location.pathname === '/design' ||
         window.location.hash === '#/design' ||
@@ -92,6 +113,19 @@ const AdeptMain: React.FC = () => {
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenDesign={openDesign}
         />
+      )}
+
+      {/* One-Tap Email Action Confirmation Toast */}
+      {emailActionNotice && (
+        <div className="bg-[#EAF2EC] border-b border-[#C6DBD0] text-[#244937] p-4 text-center text-lg font-bold flex items-center justify-center gap-3">
+          <span>{emailActionNotice}</span>
+          <button
+            onClick={() => setEmailActionNotice(null)}
+            className="text-xs text-[#244937] underline font-bold px-2 py-1 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       {/* Main View Area by Role */}
